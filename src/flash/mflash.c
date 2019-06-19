@@ -1153,13 +1153,16 @@ static void mg_gen_ataid(mg_io_type_drv_info *pSegIdDrvInfo)
 	/* Advanced power management level 1 */
 	pSegIdDrvInfo->adv_pwr_mgm_lvl_val                      = 0x0;
 	pSegIdDrvInfo->reserved5                        = 0x0;
+	/* mg_io_uint16 re_of_hw_rst uninitialized? */
 	memset(pSegIdDrvInfo->reserved6, 0x00, 68);
 	/* Security mode feature is disabled */
 	pSegIdDrvInfo->security_stas                    = 0x0;
 	memset(pSegIdDrvInfo->vendor_uniq_bytes, 0x00, 62);
 	/* CFA power mode 1 support in maximum 200mA */
 	pSegIdDrvInfo->cfa_pwr_mode                     = 0x0100;
-	memset(pSegIdDrvInfo->reserved7, 0x00, 190);
+	memset(pSegIdDrvInfo->reserved7, 0x00, 186);
+	pSegIdDrvInfo->scts_per_secure_data_unit        = 0x0;
+	pSegIdDrvInfo->integrity_word                   = 0x0;
 }
 
 static int mg_storage_config(void)
