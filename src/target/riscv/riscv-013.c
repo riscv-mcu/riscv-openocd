@@ -1353,7 +1353,13 @@ int wait_for_authbusy(struct target *target, uint32_t *dmstatus)
 /*** OpenOCD target functions. ***/
 
 static void deinit_target(struct target *target)
-{
+{	/* Release SETRESETHALTREQ to make the target system runs freely */
+	int hartid = riscv_current_hartid(target);
+	uint32_t dmcontrol = DMI_DMCONTROL_DMACTIVE;
+	dmcontrol = set_hartsel(dmcontrol, hartid);
+	dmcontrol &= ~DMI_DMCONTROL_SETRESETHALTREQ;
+	dmi_write(target, DMI_DMCONTROL, dmcontrol);
+
 	LOG_DEBUG("riscv_deinit_target()");
 	riscv_info_t *info = (riscv_info_t *) target->arch_info;
 	free(info->version_specific);
@@ -2943,6 +2949,12 @@ static int riscv013_on_halt(struct target *target)
 
 static bool riscv013_is_halted(struct target *target)
 {
+		int hartid = riscv_current_hartid(target);
+		uint32_t dmcontrol = DMI_DMCONTROL_DMACTIVE;
+		dmcontrol = set_hartsel(dmcontrol, hartid);
+		dmcontrol |= DMI_DMCONTROL_SETRESETHALTREQ;
+		dmi_write(target, DMI_DMCONTROL, dmcontrol);
+
 	uint32_t dmstatus;
 	if (dmstatus_read(target, &dmstatus, true) != ERROR_OK)
 		return false;
@@ -2951,10 +2963,11 @@ static bool riscv013_is_halted(struct target *target)
 	if (get_field(dmstatus, DMI_DMSTATUS_ANYNONEXISTENT))
 		LOG_ERROR("Hart %d doesn't exist.", riscv_current_hartid(target));
 	if (get_field(dmstatus, DMI_DMSTATUS_ANYHAVERESET)) {
-		int hartid = riscv_current_hartid(target);
+		hartid = riscv_current_hartid(target);
 		LOG_INFO("Hart %d unexpectedly reset!", hartid);
+		LOG_INFO("Note: Hart is halted due to the halt-on-reset bit is set,please continue your  program by appropriate debugger commands or operations!!");
 		/* TODO: Can we make this more obvious to eg. a gdb user? */
-		uint32_t dmcontrol = DMI_DMCONTROL_DMACTIVE |
+		 dmcontrol = DMI_DMCONTROL_DMACTIVE |
 			DMI_DMCONTROL_ACKHAVERESET;
 		dmcontrol = set_hartsel(dmcontrol, hartid);
 		/* If we had been halted when we reset, request another halt. If we

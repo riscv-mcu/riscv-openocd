@@ -956,6 +956,7 @@ static bool jtag_examine_chain_check(uint8_t *idcodes, unsigned count)
 static void jtag_examine_chain_display(enum log_levels level, const char *msg,
 	const char *name, uint32_t idcode)
 {
+	{if(0x790007a3 == idcode)//GD idcode
 	log_printf_lf(level, __FILE__, __LINE__, __func__,
 		"JTAG tap: %s %16.16s: 0x%08x "
 		"(mfg: 0x%3.3x (%s), part: 0x%4.4x, ver: 0x%1.1x)",
@@ -964,7 +965,18 @@ static void jtag_examine_chain_display(enum log_levels level, const char *msg,
 		(unsigned int)EXTRACT_MFG(idcode),
 		jep106_manufacturer(EXTRACT_JEP106_BANK(idcode), EXTRACT_JEP106_ID(idcode)),
 		(unsigned int)EXTRACT_PART(idcode),
-		(unsigned int)EXTRACT_VER(idcode));
+		(unsigned int)EXTRACT_VER(idcode));}
+
+		{if((0x1e200a6d == idcode) |(0x12010a6d == idcode) |(0x12030a6d == idcode) |(0x12050a6d == idcode) |(0x1205fa6d == idcode) |(0x12070a6d == idcode) |(0x1207fa6d == idcode))                   //NUCLEI idcode
+	log_printf_lf(level, __FILE__, __LINE__, __func__,
+		"JTAG tap: %s %16.16s: 0x%08x "
+		"(mfg: 0x%3.3x (%s), part: 0x%4.4x, ver: 0x%1.1x)",
+		name, msg,
+		(unsigned int)idcode,
+		(unsigned int)EXTRACT_MFG(idcode),
+		jep106_manufacturer(EXTRACT_JEP106_BANK(idcode), EXTRACT_JEP106_ID(idcode)),
+		(unsigned int)EXTRACT_PART(idcode),
+		(unsigned int)EXTRACT_VER(idcode));}
 }
 
 static bool jtag_idcode_is_final(uint32_t idcode)
