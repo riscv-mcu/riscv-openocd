@@ -63,6 +63,8 @@ static int polling_period = 100;
 /* address by name on which to listen for incoming TCP/IP connections */
 static char *bindto_name;
 
+static int autoexit = 0;
+
 static int add_connection(struct service *service, struct command_context *cmd_ctx)
 {
 	socklen_t address_size;
@@ -575,6 +577,11 @@ int server_loop(struct command_context *command_context)
 							remove_connection(service, c);
 							LOG_INFO("dropped '%s' connection",
 								service->name);
+							if(autoexit == 1)
+							{
+								LOG_INFO("Auto exit option is set, exitting");
+								shutdown_openocd = SHUTDOWN_WITH_SIGNAL_CODE;
+							}
 							c = next;
 							continue;
 						}
@@ -742,6 +749,8 @@ COMMAND_HANDLER(handle_shutdown_command)
 	LOG_USER("shutdown command invoked");
 
 	shutdown_openocd = SHUTDOWN_REQUESTED;
+	
+	target_quit();
 
 	if (CMD_ARGC == 1) {
 		if (!strcmp(CMD_ARGV[0], "error")) {
@@ -749,8 +758,24 @@ COMMAND_HANDLER(handle_shutdown_command)
 			return ERROR_FAIL;
 		}
 	}
-
+	
 	return ERROR_COMMAND_CLOSE_CONNECTION;
+}
+
+COMMAND_HANDLER(handle_autoexit_command)
+{
+	if(CMD_ARGC == 0)
+	{
+		LOG_WARNING("You need to set a value, true or false");
+		return ERROR_FAIL;
+	}
+	if(strncmp(CMD_ARGV[0], "true", sizeof("true")) == 0)
+		autoexit = 1;
+	else
+		autoexit = 0;
+	if(autoexit)
+		LOG_INFO("OpenOCD will shutdown when debugger closed connection");
+	return ERROR_OK;
 }
 
 COMMAND_HANDLER(handle_poll_period_command)
@@ -803,6 +828,14 @@ static const struct command_registration server_command_handlers[] = {
 		.usage = "[name]",
 		.help = "Specify address by name on which to listen for "
 			"incoming TCP/IP connections",
+	},
+	{
+		.name = "autoexit",
+		.handler = &handle_autoexit_command,
+		.mode = COMMAND_ANY,
+		.usage = "[true or false]",
+		.help = "If you set this option to true, the Debugger will automatically exit "
+			"when client close connection.",
 	},
 	COMMAND_REGISTRATION_DONE
 };
