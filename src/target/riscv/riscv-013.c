@@ -863,7 +863,7 @@ static int register_read_abstract(struct target *target, uint64_t *value,
 	if (value)
 		*value = tmpvalue;
 	
-	LOG_INFO("Reg_read %04x %08x\n", number, tmpvalue);
+	//LOG_INFO("Reg_read %04x %08x\n", number, tmpvalue);
 
 	return ERROR_OK;
 }
@@ -900,7 +900,7 @@ static int register_write_abstract(struct target *target, uint32_t number,
 		}
 		return result;
 	}
-	LOG_INFO("Reg_write %04x %08x\n", (int)number, (int)value);
+	//LOG_INFO("Reg_write %04x %08x\n", (int)number, (int)value);
 
 	return ERROR_OK;
 }
