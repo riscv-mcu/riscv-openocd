@@ -857,9 +857,13 @@ static int register_read_abstract(struct target *target, uint64_t *value,
 		}
 		return result;
 	}
-
+	int tmpvalue = read_abstract_arg(target, 0, size);
+	if(number == 0x7f2 && tmpvalue == 0)
+		tmpvalue = 0x08000000;
 	if (value)
-		*value = read_abstract_arg(target, 0, size);
+		*value = tmpvalue;
+	
+	LOG_INFO("Reg_read %04x %08x\n", number, tmpvalue);
 
 	return ERROR_OK;
 }
@@ -896,6 +900,7 @@ static int register_write_abstract(struct target *target, uint32_t number,
 		}
 		return result;
 	}
+	LOG_INFO("Reg_write %04x %08x\n", (int)number, (int)value);
 
 	return ERROR_OK;
 }
