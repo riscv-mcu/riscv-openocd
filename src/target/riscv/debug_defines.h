@@ -892,6 +892,14 @@
 #define DMI_DMCONTROL_HARTSELHI_LENGTH      10
 #define DMI_DMCONTROL_HARTSELHI             (0x3ffU << DMI_DMCONTROL_HARTSELHI_OFFSET)
 /*
+* This optional field controls DM's timeout timer.
+* When \Ftimeouten set to 1, the timeout timer will start. Any operation to DM will clear the timer.
+* When the timer overflows, the DM will automatically clear \Fdmactive bit.
+ */
+#define DMI_DMCONTROL_TIMEOUTEN_OFFSET 4
+#define DMI_DMCONTROL_TIMEOUTEN_LENGTH 1
+#define DMI_DMCONTROL_TIMEOUTEN       (0x1U << DMI_DMCONTROL_TIMEOUTEN_OFFSET)
+/*
 * This optional field writes the halt-on-reset request bit for all
 * currently selected harts.
 * When set to 1, each selected hart will halt upon the next deassertion

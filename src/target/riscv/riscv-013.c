@@ -208,12 +208,15 @@ typedef struct {
 	uint8_t datasize;
 	uint8_t dataaccess;
 	int16_t dataaddr;
+	/* dmtimeout bit */
+	uint8_t havedmtimeout;
 
 	/* The width of the hartsel field. */
 	unsigned hartsellen;
 
 	/* DM that provides access to this target. */
 	dm013_info_t *dm;
+
 } riscv013_info_t;
 
 LIST_HEAD(dm_list);
@@ -296,6 +299,7 @@ static void decode_dmi(char *text, unsigned address, unsigned data)
 		{ DMI_DMCONTROL, DMI_DMCONTROL_HARTSELLO, "hartsello" },
 		{ DMI_DMCONTROL, DMI_DMCONTROL_NDMRESET, "ndmreset" },
 		{ DMI_DMCONTROL, DMI_DMCONTROL_DMACTIVE, "dmactive" },
+		{ DMI_DMCONTROL, DMI_DMCONTROL_TIMEOUTEN, "timeouten" },
 		{ DMI_DMCONTROL, DMI_DMCONTROL_ACKHAVERESET, "ackhavereset" },
 
 		{ DMI_DMSTATUS, DMI_DMSTATUS_IMPEBREAK, "impebreak" },
@@ -618,6 +622,12 @@ static int dmi_read_exec(struct target *target, uint32_t *value, uint32_t addres
 
 static int dmi_write(struct target *target, uint32_t address, uint32_t value)
 {
+	RISCV013_INFO(info);
+	if(info->havedmtimeout == 1)
+	{
+		if (address == DMI_DMCONTROL)
+			value |= DMI_DMCONTROL_TIMEOUTEN;
+	}
 	return dmi_op(target, NULL, NULL, DMI_OP_WRITE, address, value, false);
 }
 
@@ -1560,6 +1570,33 @@ static int examine(struct target *target)
 					r->misa[i]);
 		} else {
 			LOG_INFO(" hart %d: currently disabled", i);
+		}
+	}
+
+	/* Examine target has timeouten bit */
+	info->havedmtimeout = 0;
+
+	if (dmi_read(target, &dmcontrol, DMI_DMCONTROL) != ERROR_OK)
+		return ERROR_FAIL;
+	dmcontrol &= ~DMI_DMCONTROL_TIMEOUTEN;
+	if (dmi_write(target, DMI_DMCONTROL, dmcontrol) != ERROR_OK)
+		return ERROR_FAIL;
+
+	if ((dmcontrol & DMI_DMCONTROL_TIMEOUTEN) == 0)
+	{
+		dmcontrol |= DMI_DMCONTROL_TIMEOUTEN;
+		if (dmi_write(target, DMI_DMCONTROL, dmcontrol) != ERROR_OK)
+			return ERROR_FAIL;
+		if (dmi_read(target, &dmcontrol, DMI_DMCONTROL) != ERROR_OK)
+			return ERROR_FAIL;
+		LOG_DEBUG("dmcontrol = 0x%08x", dmcontrol);
+		if (dmcontrol & DMI_DMCONTROL_TIMEOUTEN)
+		{
+			LOG_INFO("Target has dm_timeouten bit, set RESETHALTREQ for verbose debugging");
+			dmcontrol |= DMI_DMCONTROL_SETRESETHALTREQ;
+			dmcontrol &= ~DMI_DMCONTROL_CLRRESETHALTREQ;
+			dmi_write(target, DMI_DMCONTROL, dmcontrol);
+			info->havedmtimeout = 1;
 		}
 	}
 	return ERROR_OK;
@@ -2957,6 +2994,8 @@ static int riscv013_on_halt(struct target *target)
 static bool riscv013_is_halted(struct target *target)
 {
 	uint32_t dmstatus;
+	RISCV013_INFO(info);
+
 	if (dmstatus_read(target, &dmstatus, true) != ERROR_OK)
 		return false;
 	if (get_field(dmstatus, DMI_DMSTATUS_ANYUNAVAIL))
@@ -2966,10 +3005,17 @@ static bool riscv013_is_halted(struct target *target)
 	if (get_field(dmstatus, DMI_DMSTATUS_ANYHAVERESET)) {
 		int hartid = riscv_current_hartid(target);
 		LOG_INFO("Hart %d unexpectedly reset!", hartid);
-		LOG_INFO("In debug mode, Please don't reset target by reset key");
-		LOG_INFO("To reset target, please click 'restart' button on Eclipse IDE.");
-		LOG_INFO("Otherwise the breakpoint will be all lose!!");
-		LOG_INFO("Now, please click pause button, and restart again to re-control the target.");
+		if (info->havedmtimeout == 0)
+		{
+			LOG_INFO("In debug mode, Please don't reset target by reset key");
+			LOG_INFO("To reset target, please click 'restart' button on Eclipse IDE.");
+			LOG_INFO("Otherwise the breakpoint will be all lose!!");
+			LOG_INFO("Now, please click pause button, and restart again to re-control the target.");
+		}
+		else
+		{
+			LOG_INFO("Please execute 'continue' command to run your program.");
+		}
 		/* TODO: Can we make this more obvious to eg. a gdb user? */
 		uint32_t dmcontrol = DMI_DMCONTROL_DMACTIVE |
 			DMI_DMCONTROL_ACKHAVERESET;

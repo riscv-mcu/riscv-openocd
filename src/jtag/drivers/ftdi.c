@@ -798,7 +798,7 @@ static int ftdi_quit(void)
 static void oscan1_mpsse_clock_data(struct mpsse_ctx *ctx, const uint8_t *out, unsigned out_offset, uint8_t *in,
 		     unsigned in_offset, unsigned length, uint8_t mode)
 {
-	static const uint8_t zero;
+	static const uint8_t zero = 0;
 	static const uint8_t one = 1;
 
 	DEBUG_IO("oscan1_mpsse_clock_data: %sout %d bits", in ? "in" : "", length);
@@ -835,7 +835,7 @@ static void oscan1_mpsse_clock_data(struct mpsse_ctx *ctx, const uint8_t *out, u
 static void oscan1_mpsse_clock_tms_cs(struct mpsse_ctx *ctx, const uint8_t *out, unsigned out_offset, uint8_t *in,
 		       unsigned in_offset, unsigned length, bool tdi, uint8_t mode)
 {
-	static const uint8_t zero;
+	static const uint8_t zero = 0;
 	static const uint8_t one = 1;
 
 	DEBUG_IO("oscan1_mpsse_clock_tms_cs: %sout %d bits, tdi=%d", in ? "in" : "", length, tdi);
