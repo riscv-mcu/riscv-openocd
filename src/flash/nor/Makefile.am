@@ -46,6 +46,7 @@ NOR_DRIVERS = \
 	%D%/non_cfi.c \
 	%D%/nrf5.c \
 	%D%/numicro.c \
+	%D%/nuspi.c\
 	%D%/ocl.c \
 	%D%/pic32mx.c \
 	%D%/psoc4.c \
