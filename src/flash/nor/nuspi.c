@@ -119,6 +119,7 @@
 struct nuspi_flash_bank {
 	int probed;
 	target_addr_t ctrl_base;
+	int default_csid;
 	const struct flash_device *dev;
 };
 
@@ -191,6 +192,8 @@ static int nuspi_write_reg(struct flash_bank *bank, target_addr_t address, uint3
 	struct target *target = bank->target;
 	struct nuspi_flash_bank *nuspi_info = bank->driver_priv;
 
+	//LOG_INFO("Write %x to reg %x", value, (uint32_t)address);
+
 	int result = target_write_u32(target, nuspi_info->ctrl_base + address, value);
 	if (result != ERROR_OK) {
 		LOG_ERROR("nuspi_write_reg() error writing 0x%x to " TARGET_ADDR_FMT,
@@ -202,18 +205,28 @@ static int nuspi_write_reg(struct flash_bank *bank, target_addr_t address, uint3
 
 static int nuspi_disable_hw_mode(struct flash_bank *bank)
 {
+/*
 	uint32_t fctrl;
+
 	if (nuspi_read_reg(bank, &fctrl, NUSPI_REG_FCTRL) != ERROR_OK)
 		return ERROR_FAIL;
-	return nuspi_write_reg(bank, NUSPI_REG_FCTRL, 0); //fctrl & ~NUSPI_FCTRL_EN);
+*/
+	if (nuspi_write_reg(bank, NUSPI_REG_FCTRL, 0x0) != ERROR_OK)
+		return ERROR_FAIL;
+	return nuspi_write_reg(bank, NUSPI_REG_CSID, 0x0);
 }
 
 static int nuspi_enable_hw_mode(struct flash_bank *bank)
 {
+/*
 	uint32_t fctrl;
+
 	if (nuspi_read_reg(bank, &fctrl, NUSPI_REG_FCTRL) != ERROR_OK)
 		return ERROR_FAIL;
-	return nuspi_write_reg(bank, NUSPI_REG_FCTRL, 0x5); //fctrl | NUSPI_FCTRL_EN);
+*/
+	if (nuspi_write_reg(bank, NUSPI_REG_FCTRL, 0x5) != ERROR_OK)
+		return ERROR_FAIL;
+	return nuspi_write_reg(bank, NUSPI_REG_CSID, 0x1);
 }
 
 static int nuspi_set_dir(struct flash_bank *bank, bool dir)
@@ -296,15 +309,14 @@ static int nuspi_wip(struct flash_bank *bank, int timeout)
 {
 	int64_t endtime;
 
-	nuspi_set_dir(bank, NUSPI_DIR_RX);
-
 	if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x1) != ERROR_OK)
 		return ERROR_FAIL;
 	endtime = timeval_ms() + timeout;
 
+	nuspi_set_dir(bank, NUSPI_DIR_TX);
 	if (nuspi_xfer(bank, SPIFLASH_READ_STATUS, NULL) != ERROR_OK)
 		return ERROR_FAIL;
-
+	nuspi_set_dir(bank, NUSPI_DIR_RX);
 	do {
 		alive_sleep(1);
 
@@ -314,10 +326,10 @@ static int nuspi_wip(struct flash_bank *bank, int timeout)
 		if ((rx & SPIFLASH_BSY_BIT) == 0) {
 			if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x0) != ERROR_OK)
 				return ERROR_FAIL;
-			nuspi_set_dir(bank, NUSPI_DIR_TX);
 			return ERROR_OK;
 		}
 	} while (timeval_ms() < endtime);
+	nuspi_write_reg(bank, NUSPI_REG_CSID, 0x0);
 
 	LOG_ERROR("timeout");
 	return ERROR_FAIL;
@@ -327,7 +339,7 @@ static int nuspi_erase_sector(struct flash_bank *bank, int sector)
 {
 	struct nuspi_flash_bank *nuspi_info = bank->driver_priv;
 	int retval;
-
+	nuspi_set_dir(bank, NUSPI_DIR_TX);
 	if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x1) != ERROR_OK)
 		return ERROR_FAIL;
 
@@ -351,9 +363,6 @@ static int nuspi_erase_sector(struct flash_bank *bank, int sector)
 	if (retval != ERROR_OK)
 		return retval;
 	retval = nuspi_xfer(bank, sector, NULL);
-	if (retval != ERROR_OK)
-		return retval;
-	//retval = nuspi_txwm_wait(bank);
 	if (retval != ERROR_OK)
 		return retval;
 	if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x0) != ERROR_OK)
@@ -413,7 +422,7 @@ static int nuspi_erase(struct flash_bank *bank, int first, int last)
 	/* Disable Hardware accesses*/
 	if (nuspi_disable_hw_mode(bank) != ERROR_OK)
 		return ERROR_FAIL;
-
+	nuspi_set_dir(bank, NUSPI_DIR_TX);
 	/* poll WIP */
 	retval = nuspi_wip(bank, NUSPI_PROBE_TIMEOUT);
 	if (retval != ERROR_OK)
@@ -455,6 +464,7 @@ static int slow_nuspi_write_buffer(struct flash_bank *bank,
 	}
 
 	/* TODO!!! assert that len < page size */
+	nuspi_set_dir(bank, NUSPI_DIR_TX);
 	if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x1) != ERROR_OK)
 		return ERROR_FAIL;
 	nuspi_xfer(bank, SPIFLASH_WRITE_ENABLE, NULL);
@@ -473,14 +483,13 @@ static int slow_nuspi_write_buffer(struct flash_bank *bank,
 	for (ii = 0; ii < len; ii++)
 		nuspi_xfer(bank, buffer[ii], NULL);
 
-	//nuspi_txwm_wait(bank);
-
 	if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x0) != ERROR_OK)
 		return ERROR_FAIL;
 
+
 	keep_alive();
 
-	return ERROR_OK;
+	return nuspi_wip(bank, NUSPI_MAX_TIMEOUT);
 }
 
 static const uint8_t algorithm_bin[] = {
@@ -669,8 +678,10 @@ static int steps_add_buffer_write(struct algorithm_steps *as,
 		return ERROR_FAIL;
 	}
 
+	as_add_write_reg(as, NUSPI_REG_CSID, 0x1);
 	as_add_tx1(as, SPIFLASH_WRITE_ENABLE);
-	as_add_txwm_wait(as);
+	as_add_write_reg(as, NUSPI_REG_CSID, 0x0);
+	//as_add_txwm_wait(as);
 	as_add_write_reg(as, NUSPI_REG_CSID, 0x1);
 
 	uint8_t setup[] = {
@@ -682,7 +693,7 @@ static int steps_add_buffer_write(struct algorithm_steps *as,
 	as_add_tx(as, sizeof(setup), setup);
 
 	as_add_tx(as, len, buffer);
-	as_add_txwm_wait(as);
+	//as_add_txwm_wait(as);
 	as_add_write_reg(as, NUSPI_REG_CSID, 0x0);
 
 	/* nuspi_wip() */
@@ -886,9 +897,6 @@ static int nuspi_read_flash_id(struct flash_bank *bank, uint32_t *id)
 
 	nuspi_set_dir(bank, NUSPI_DIR_TX);
 
-
-	if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x0) != ERROR_OK)
-		return ERROR_FAIL;
 	if (nuspi_write_reg(bank, NUSPI_REG_CSID, 0x1) != ERROR_OK)
 		return ERROR_FAIL;
 
@@ -943,7 +951,7 @@ static int nuspi_probe(struct flash_bank *bank)
 			}
 
 		if (!target_device->name) {
-			LOG_ERROR("Device ID 0x%" PRIx32 " is not known as NUSPI capable",
+			LOG_ERROR("Device ID 0x%" PRIx32 " is not known as NuSPI capable, please apply ctrl_base argument to configuration",
 					target->tap->idcode);
 			return ERROR_FAIL;
 		}
@@ -963,10 +971,11 @@ static int nuspi_probe(struct flash_bank *bank)
 			  bank->base);
 	}
 
-	/* read and decode flash ID; returns in SW mode */
-	//if (nuspi_write_reg(bank, NUSPI_REG_TXCTRL, NUSPI_TXWM(1)) != ERROR_OK)
-	//	return ERROR_FAIL;
-	//nuspi_set_dir(bank, NUSPI_DIR_TX);
+#if 0
+	/* Read the default CSID */
+	if (nuspi_read_reg(bank, &(nuspi_info->default_csid), NUSPI_REG_CSID) != ERROR_OK)
+		return ERROR_FAIL;
+#endif
 
 	/* Disable Hardware accesses*/
 	if (nuspi_disable_hw_mode(bank) != ERROR_OK)
