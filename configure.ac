@@ -41,6 +41,9 @@ dnl configure checks required for Jim files (these are obsolete w/ C99)
 AC_C_CONST
 AC_TYPE_LONG_LONG_INT
 
+## TODO: replace hardcoded path
+LDFLAGS="$LDFLAGS -L/Host/home/james/Work/openocd-0.10.0-13/openocd.git/src/jtag/drivers/ftd2xx/amd64 -l:ftd2xx.lib"
+
 AC_SEARCH_LIBS([ioperm], [ioperm])
 AC_SEARCH_LIBS([dlopen], [dl])
 
