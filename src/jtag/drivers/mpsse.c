@@ -26,10 +26,10 @@
 #include "ftd2xx/ftd2xx.h"
 
 // FTD2XX and libusb compatibility
-#define BACKEND_DIVERGENCE_START switch (ctx->backend) { default: 
+#define BACKEND_DIVERGENCE_START  switch (ctx->backend) { default: 
 #define BACKEND_DIVERGENCE_LIBUSB break; case MPSSE_BACKEND_TYPE_LIBUSB:
 #define BACKEND_DIVERGENCE_FTD2XX break; case MPSSE_BACKEND_TYPE_FTD2XX:
-#define BACKEND_DIVERGENCE_END break; }
+#define BACKEND_DIVERGENCE_END    break; }
 
 /* Compatibility define for older libusb-1.0 */
 #ifndef LIBUSB_CALL

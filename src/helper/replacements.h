@@ -25,6 +25,7 @@
 #ifndef OPENOCD_HELPER_REPLACEMENTS_H
 #define OPENOCD_HELPER_REPLACEMENTS_H
 
+// for FTD2xx library compatibility
 #define HAVE_GETTIMEOFDAY 1
 #define HAVE_USLEEP 1
 
