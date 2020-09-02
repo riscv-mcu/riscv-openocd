@@ -1066,12 +1066,18 @@ int mpsse_flush(struct mpsse_ctx *ctx)
 
 		ft_status = FT_Write(ctx->usb_ft_handle, ctx->write_buffer, ctx->write_count, &write_bytes_done);
 		LOG_DEBUG_IO("FT_Write(): returned %lu, written bytes %lu/%u", ft_status, write_bytes_done, ctx->write_count);
+		if (ft_status != FT_OK) {
+			LOG_ERROR("FT_Write() returned %lu", ft_status);
+			retval = ERROR_FAIL;
+		}
 
 		// wait for queue to clear
 		do {
 			ft_status = FT_GetStatus(ctx->usb_ft_handle, &rx_queue_len, &tx_queue_len, &ft_event_status);
 			if (ft_status != FT_OK) {
 				LOG_ERROR("FT_GetStatus() returned %lu", ft_status);
+				retval = ERROR_FAIL;
+				break;
 			}
 			keep_alive();
 		} while (tx_queue_len);
@@ -1087,6 +1093,8 @@ int mpsse_flush(struct mpsse_ctx *ctx)
 		// 	ft_status = FT_GetStatus(ctx->usb_ft_handle, &rx_queue_len, &tx_queue_len, &ft_event_status);
 		// 	if (ft_status != FT_OK) {
 		// 		LOG_ERROR("FT_GetStatus() returned %lu", ft_status);
+		//      retval = ERROR_FAIL;
+		//      break;
 		// 	}
 		// 	keep_alive();
 
@@ -1103,12 +1111,18 @@ int mpsse_flush(struct mpsse_ctx *ctx)
 		// BTW, read_chunk* is not needed since FT_Read removes the 2 status bytes (reference: read_cb()) for us
 		ft_status = FT_Read(ctx->usb_ft_handle, ctx->read_buffer, ctx->read_count, &read_bytes_done);
 		LOG_DEBUG_IO("FT_Read(): returned %lu, read bytes %lu/%u", ft_status, read_bytes_done, ctx->read_count);
+		if (ft_status != FT_OK) {
+			LOG_ERROR("FT_Read() returned %lu", ft_status);
+			retval = ERROR_FAIL;
+		}
 
 		// wait for queue to clear
 		do {
 			ft_status = FT_GetStatus(ctx->usb_ft_handle, &rx_queue_len, &tx_queue_len, &ft_event_status);
 			if (ft_status != FT_OK) {
 				LOG_ERROR("FT_GetStatus() returned %lu", ft_status);
+				retval = ERROR_FAIL;
+				break;
 			}
 			keep_alive();
 		} while (rx_queue_len);
