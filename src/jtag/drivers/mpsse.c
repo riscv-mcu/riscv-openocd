@@ -112,7 +112,11 @@ static bool string_descriptor_equal(libusb_device_handle *device, uint8_t str_in
 		LOG_ERROR("libusb_get_string_descriptor_ascii() failed with %s", libusb_error_name(retval));
 		return false;
 	}
-	return strncmp(string, desc_string, sizeof(desc_string)) == 0;
+
+	// FTD2xx descriptor is "USB <-> JTAG-DEBUGGER A"
+	// libusb descriptor is "USB <-> JTAG-DEBUGGER"
+	// to implement cfg file compatibility, we only compare up to desc_string logical length
+	return strncmp(string, desc_string, MIN(strlen(desc_string), sizeof(desc_string))) == 0;
 }
 
 static bool device_location_equal(libusb_device *device, const char *location)
@@ -182,9 +186,11 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 	struct libusb_config_descriptor *config0;
 	int err;
 	bool found = false;
+	
+#ifdef _WIN32
+	// FTD2xx initialize first
 	FT_STATUS ft_status;
 
-	// FTD2xx initialize first
 	LOG_DEBUG("open_matching_device() FTD2xx init start");
 	DWORD ft_cnt;
 	ft_status = FT_CreateDeviceInfoList(&ft_cnt);
@@ -218,9 +224,9 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 
 				// FIXME: check location does not work for now since libusb use a different location identifier from FTD2xx
 
-				if (product && strcmp(devInfo[i].Description, product)) continue;
+				if (product && strncmp(devInfo[i].Description, product, strlen(product))) continue;
 
-				if (serial && strcmp(devInfo[i].SerialNumber, serial)) continue;
+				if (serial && strncmp(devInfo[i].SerialNumber, serial, strlen(serial))) continue;
 
 				found = true;
 				ft_matched_device_id = i;
@@ -289,7 +295,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 
 open_matching_device_fallback_libusb:
 	LOG_DEBUG("open_matching_device() FTD2xx init end");
-
+#endif // _WIN32
 	// libusb
 	ssize_t cnt = libusb_get_device_list(ctx->usb_ctx, &list);
 	if (cnt < 0)
