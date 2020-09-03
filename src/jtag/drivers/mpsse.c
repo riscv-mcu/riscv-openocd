@@ -359,7 +359,7 @@ open_matching_device_libusb_not_matched:
 		LOG_ERROR("FT_CreateDeviceInfoList() error %lu", ft_status);
 		goto open_matching_device_fallback_libusb;
 	}
-	LOG_INFO("FT D2xx device count: %lu", ft_cnt);
+	LOG_INFO("D2xx device count: %lu", ft_cnt);
 
 	// FTD2xx (except single-channel chips like FT232H) descriptor is "USB <-> JTAG-DEBUGGER A"
 	// libusb descriptor is "USB <-> JTAG-DEBUGGER"
@@ -422,7 +422,7 @@ open_matching_device_libusb_not_matched:
 		LOG_WARNING("D2xx driver found nothing, falling back to libusb...");
 		goto open_matching_device_fallback_libusb;
 	} else {
-		LOG_INFO("Connecting with \"%s\" using D2xx mode...", ft_matched_device_description);
+		LOG_INFO("Connecting to \"%s\" using D2xx mode...", ft_matched_device_description);
 	}
 
 	ctx -> backend = MPSSE_BACKEND_TYPE_FTD2XX;
