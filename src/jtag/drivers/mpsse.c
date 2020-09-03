@@ -248,7 +248,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 
 	if (!found) {
 		LOG_ERROR("no device found");
-		goto open_matching_device_libusb_not_matched;
+		goto libusb_abort;
 	} else {
 		LOG_INFO("Using libusb driver");
 	}
@@ -347,7 +347,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 	libusb_free_config_descriptor(config0);
 	return true;
 
-open_matching_device_libusb_not_matched:
+libusb_abort:
 #ifdef BUILD_BACKEND_FTD2XX
 	// try FTD2XX
 
@@ -357,7 +357,7 @@ open_matching_device_libusb_not_matched:
 	ft_status = FT_CreateDeviceInfoList(&ft_cnt);
 	if (ft_status != FT_OK) {
 		LOG_ERROR("FT_CreateDeviceInfoList() error %lu", ft_status);
-		goto open_matching_device_fallback_libusb;
+		goto ftd2xx_abort;
 	}
 	LOG_INFO("D2xx device count: %lu", ft_cnt);
 
@@ -420,7 +420,7 @@ open_matching_device_libusb_not_matched:
 
 	if (!found) {
 		LOG_WARNING("D2xx driver found nothing, falling back to libusb...");
-		goto open_matching_device_fallback_libusb;
+		goto ftd2xx_abort;
 	} else {
 		LOG_INFO("Connecting to \"%s\" using D2xx mode...", ft_matched_device_description);
 	}
@@ -469,12 +469,12 @@ open_matching_device_libusb_not_matched:
 	{
 		LOG_ERROR("Error in initializing the MPSSE %lu\n", ft_status);
 		FT_Close(ctx->usb_ft_handle);
-		goto open_matching_device_fallback_libusb;
+		goto ftd2xx_abort;
 	}
 
 	return true;
 
-open_matching_device_fallback_libusb:
+ftd2xx_abort:
 	LOG_DEBUG("open_matching_device() FTD2xx init end");
 #endif // BUILD_BACKEND_FTD2XX
 
