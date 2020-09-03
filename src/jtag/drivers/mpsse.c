@@ -23,16 +23,22 @@
 #include "mpsse.h"
 #include "helper/log.h"
 #include <libusb.h>
+
+#define USE_BACKEND_FTD2XX 1
+
+#if defined(_WIN32) && defined(USE_BACKEND_FTD2XX)
+#define BUILD_BACKEND_FTD2XX
+#endif
+
+#ifdef BUILD_BACKEND_FTD2XX
 #include "ftd2xx/ftd2xx.h"
+#endif
 
 // FTD2XX and libusb compatibility
 #define BACKEND_DIVERGENCE_START  switch (ctx->backend) { default:;
 #define BACKEND_DIVERGENCE_LIBUSB break; case MPSSE_BACKEND_TYPE_LIBUSB:;
 #define BACKEND_DIVERGENCE_FTD2XX break; case MPSSE_BACKEND_TYPE_FTD2XX:;
 #define BACKEND_DIVERGENCE_END    break; }
-
-// FTD2XX max read wait cycles
-// #define FT_MAX_READ_WAIT_CYCLES 50
 
 /* Compatibility define for older libusb-1.0 */
 #ifndef LIBUSB_CALL
@@ -77,8 +83,10 @@ struct mpsse_ctx {
 	libusb_context *usb_ctx;
 	libusb_device_handle *usb_dev;
 
+#ifdef BUILD_BACKEND_FTD2XX
 	// ftd2xx backend
 	FT_HANDLE usb_ft_handle;
+#endif
 
 	unsigned int usb_write_timeout;
 	unsigned int usb_read_timeout;
@@ -86,7 +94,7 @@ struct mpsse_ctx {
 	uint8_t out_ep;
 	uint16_t max_packet_size;
 	uint16_t index;
-	uint8_t interface;
+	uint8_t interface; // channel
 	enum ftdi_chip_type type;
 	uint8_t *write_buffer;
 	unsigned write_size; // size of write_buffer
@@ -187,7 +195,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 	int err;
 	bool found = false;
 	
-#ifdef _WIN32
+#ifdef BUILD_BACKEND_FTD2XX
 	// FTD2xx initialize first
 	FT_STATUS ft_status;
 
@@ -295,7 +303,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 
 open_matching_device_fallback_libusb:
 	LOG_DEBUG("open_matching_device() FTD2xx init end");
-#endif // _WIN32
+#endif // BUILD_BACKEND_FTD2XX
 	// libusb
 	ssize_t cnt = libusb_get_device_list(ctx->usb_ctx, &list);
 	if (cnt < 0)
@@ -446,14 +454,14 @@ desc_error:
 	LOG_ERROR("unrecognized USB device descriptor");
 error:
 	BACKEND_DIVERGENCE_START
+#ifdef BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_FTD2XX
 	FT_SetBitMode(ctx->usb_ft_handle, 0x0, 0x00);
 	FT_Close(ctx->usb_ft_handle);
-	break;
+#endif // BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_LIBUSB
 	libusb_free_config_descriptor(config0);
 	libusb_close(ctx->usb_dev);
-	break;
 	BACKEND_DIVERGENCE_END
 	return false;
 }
@@ -463,7 +471,9 @@ struct mpsse_ctx *mpsse_open(const uint16_t *vid, const uint16_t *pid, const cha
 {
 	struct mpsse_ctx *ctx = calloc(1, sizeof(*ctx));
 	int err;
+#ifdef BUILD_BACKEND_FTD2XX
 	FT_STATUS ft_status;
+#endif // BUILD_BACKEND_FTD2XX
 
 	if (!ctx)
 		return 0;
@@ -520,12 +530,14 @@ struct mpsse_ctx *mpsse_open(const uint16_t *vid, const uint16_t *pid, const cha
 		LOG_ERROR("unable to set latency timer: %s", libusb_error_name(err));
 		goto error;
 	}
+#ifdef BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_FTD2XX
 	ft_status = FT_SetLatencyTimer(ctx->usb_ft_handle, 255);
 	if (ft_status != FT_OK) {
 		LOG_ERROR("unable to set latency timer: %lu", ft_status);
 		goto error;
 	}
+#endif // BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_END
 
 	// set MPSSE bitmode
@@ -543,6 +555,7 @@ struct mpsse_ctx *mpsse_open(const uint16_t *vid, const uint16_t *pid, const cha
 		LOG_ERROR("unable to set MPSSE bitmode: %s", libusb_error_name(err));
 		goto error;
 	}
+#ifdef BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_FTD2XX
 	ft_status |= FT_SetBitMode(ctx->usb_ft_handle, 0x0, 0x00); // reset controller mode
 	ft_status |= FT_SetBitMode(ctx->usb_ft_handle, 0x0, BITMODE_MPSSE); // enter MPSSE mode
@@ -550,10 +563,11 @@ struct mpsse_ctx *mpsse_open(const uint16_t *vid, const uint16_t *pid, const cha
 		LOG_ERROR("unable to set MPSSE bitmode: %lu", ft_status);
 		goto error;
 	}
-	BACKEND_DIVERGENCE_END
 
 	// documentation (https://www.ftdichip.com/Support/Documents/AppNotes/AN_135_MPSSE_Basics.pdf) said to hardcode a delay here
 	Sleep(50);
+#endif // BUILD_BACKEND_FTD2XX
+	BACKEND_DIVERGENCE_END
 
 	mpsse_purge(ctx);
 
@@ -571,9 +585,11 @@ void mpsse_close(struct mpsse_ctx *ctx)
 		libusb_close(ctx->usb_dev);
 	if (ctx->usb_ctx)
 		libusb_exit(ctx->usb_ctx);
+#ifdef BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_FTD2XX
 	FT_SetBitMode(ctx->usb_ft_handle, 0x0, 0x00); // reset controller mode
 	FT_Close(ctx->usb_ft_handle);
+#endif // BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_END
 
 	bit_copy_discard(&ctx->read_queue);
@@ -595,7 +611,6 @@ bool mpsse_is_high_speed(struct mpsse_ctx *ctx)
 void mpsse_purge(struct mpsse_ctx *ctx)
 {
 	int err;
-	FT_STATUS ft_status;
 	LOG_DEBUG("-");
 	ctx->write_count = 0;
 	ctx->read_count = 0;
@@ -618,12 +633,14 @@ void mpsse_purge(struct mpsse_ctx *ctx)
 		LOG_ERROR("unable to purge ftdi tx buffers: %s", libusb_error_name(err));
 		return;
 	}
+#ifdef BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_FTD2XX
-	ft_status = FT_Purge(ctx->usb_ft_handle, FT_PURGE_TX | FT_PURGE_RX);
+	FT_STATUS ft_status = FT_Purge(ctx->usb_ft_handle, FT_PURGE_TX | FT_PURGE_RX);
 	if (ft_status != FT_OK) {
 		LOG_ERROR("unable to purge ftdi tx&rx buffers: %ul", ft_status);
 		return;
 	}
+#endif // BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_END	
 }
 
@@ -1047,6 +1064,7 @@ int mpsse_flush(struct mpsse_ctx *ctx)
 		return retval;
 
 	BACKEND_DIVERGENCE_START
+#ifdef BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_FTD2XX
 
 	FT_STATUS ft_status;
@@ -1060,8 +1078,6 @@ int mpsse_flush(struct mpsse_ctx *ctx)
 
 	// write
 	if (ctx->write_count) {
-		DEBUG_PRINT_BUF(ctx->write_buffer, ctx->write_count);
-
 		assert(ctx->write_count <= ctx->write_size); // assume write_buffer can be sent in one request
 
 		ft_status = FT_Write(ctx->usb_ft_handle, ctx->write_buffer, ctx->write_count, &write_bytes_done);
@@ -1085,27 +1101,7 @@ int mpsse_flush(struct mpsse_ctx *ctx)
 
 	// read
 	if (ctx->read_count) {
-		DEBUG_PRINT_BUF(ctx->read_buffer, ctx->read_count);
-
-		// // wait for queue to build up -- does not actually needed
-		// int read_wait_cycles = 0;
-		// do {
-		// 	ft_status = FT_GetStatus(ctx->usb_ft_handle, &rx_queue_len, &tx_queue_len, &ft_event_status);
-		// 	if (ft_status != FT_OK) {
-		// 		LOG_ERROR("FT_GetStatus() returned %lu", ft_status);
-		//      retval = ERROR_FAIL;
-		//      break;
-		// 	}
-		// 	keep_alive();
-
-		// 	read_wait_cycles++;
-		// 	if (read_wait_cycles > FT_MAX_READ_WAIT_CYCLES) {
-		// 		LOG_WARNING("FT_Read() waited for too long, aborting wait loop");
-		// 		break;
-		// 	}
-		// } while (rx_queue_len < ctx->read_count);
-
-		assert(ctx->read_count <= ctx->read_size); // assert read_buffer can be read in one request
+		assert(ctx->read_count <= ctx->read_size); // assume read_buffer can be read in one request
 
 		// read
 		// BTW, read_chunk* is not needed since FT_Read removes the 2 status bytes (reference: read_cb()) for us
@@ -1151,7 +1147,7 @@ int mpsse_flush(struct mpsse_ctx *ctx)
 		bit_copy_discard(&ctx->read_queue);
 		retval = ERROR_OK;
 	}
-
+#endif // BUILD_BACKEND_FTD2XX
 	BACKEND_DIVERGENCE_LIBUSB
 	// the original libusb data transfer
 	struct libusb_transfer *read_transfer = 0;
