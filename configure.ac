@@ -370,11 +370,10 @@ AS_CASE([$host_os],
 
     AS_CASE(["${host_cpu}"],
       [x86_64], [
-        ## TODO: replace hardcoded path
-        LDFLAGS="$LDFLAGS -L/Host/home/james/Work/openocd-0.10.0-13/openocd.git/src/jtag/drivers/ftd2xx/amd64 -l:ftd2xx.lib"
+        LDFLAGS="$LDFLAGS -L${abs_top_builddir}/src/jtag/drivers/ftd2xx/amd64 -l:ftd2xx.lib"
       ],
       [i?86], [
-        LDFLAGS="$LDFLAGS -L/Host/home/james/Work/openocd-0.10.0-13/openocd.git/src/jtag/drivers/ftd2xx/i386 -l:ftd2xx.lib"
+        LDFLAGS="$LDFLAGS -L${abs_top_builddir}/src/jtag/drivers/ftd2xx/i386 -l:ftd2xx.lib"
       ],
       []
     )
