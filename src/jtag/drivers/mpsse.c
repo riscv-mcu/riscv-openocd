@@ -24,9 +24,7 @@
 #include "helper/log.h"
 #include <libusb.h>
 
-#define USE_BACKEND_FTD2XX 1
-
-#if defined(_WIN32) && defined(USE_BACKEND_FTD2XX)
+#if defined(_WIN32) && BUILD_FTD2XX == 1
 #define BUILD_BACKEND_FTD2XX
 #endif
 

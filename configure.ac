@@ -41,9 +41,6 @@ dnl configure checks required for Jim files (these are obsolete w/ C99)
 AC_C_CONST
 AC_TYPE_LONG_LONG_INT
 
-## TODO: replace hardcoded path
-LDFLAGS="$LDFLAGS -L/Host/home/james/Work/openocd-0.10.0-13/openocd.git/src/jtag/drivers/ftd2xx/amd64 -l:ftd2xx.lib"
-
 AC_SEARCH_LIBS([ioperm], [ioperm])
 AC_SEARCH_LIBS([dlopen], [dl])
 
@@ -364,6 +361,30 @@ AC_ARG_ENABLE([remote-bitbang],
   AS_HELP_STRING([--enable-remote-bitbang], [Enable building support for the Remote Bitbang jtag driver]),
   [build_remote_bitbang=$enableval], [build_remote_bitbang=no])
 
+AC_MSG_CHECKING([whether to enable ftd2xx driver])
+AS_CASE([$host_os],
+  [cygwin*|mingw*], [
+    AC_ARG_ENABLE([ftd2xx],
+      AS_HELP_STRING([--disable-ftd2xx], [Enable building support for native FTDI D2xx JTAG interface support (without libusb) on Windows.]),
+        [build_ftd2xx=$enableval], [build_ftd2xx=yes])
+
+    AS_CASE(["${host_cpu}"],
+      [x86_64], [
+        ## TODO: replace hardcoded path
+        LDFLAGS="$LDFLAGS -L/Host/home/james/Work/openocd-0.10.0-13/openocd.git/src/jtag/drivers/ftd2xx/amd64 -l:ftd2xx.lib"
+      ],
+      [i?86], [
+        LDFLAGS="$LDFLAGS -L/Host/home/james/Work/openocd-0.10.0-13/openocd.git/src/jtag/drivers/ftd2xx/i386 -l:ftd2xx.lib"
+      ],
+      []
+    )
+  ],
+  [
+    AS_IF([test "x$build_ftd2xx" = "xyes"], [
+      AC_MSG_ERROR([ftd2xx is only available on Windows])
+    ])
+])
+
 AC_MSG_CHECKING([whether to enable dummy minidriver])
 AS_IF([test "x$build_minidriver_dummy" = "xyes"], [
   AS_IF([test "x$build_minidriver" = "xyes"], [
@@ -599,6 +620,12 @@ AS_IF([test "x$build_target64" = "xyes"], [
   AC_DEFINE([BUILD_TARGET64], [0], [0 if you don't want 64-bit addresses.])
 ])
 
+AS_IF([test "x$build_ftd2xx" = "xyes"], [
+  AC_DEFINE([BUILD_FTD2XX], [1], [1 if you want the FTD2xx driver support.])
+], [
+  AC_DEFINE([BUILD_FTD2XX], [0], [0 if you don't want FTD2xx driver support.])
+])
+
 
 PKG_CHECK_MODULES([LIBUSB1], [libusb-1.0], [
 	use_libusb1=yes
@@ -723,6 +750,7 @@ AM_CONDITIONAL([USE_LIBFTDI], [test "x$use_libftdi" = "xyes"])
 AM_CONDITIONAL([USE_HIDAPI], [test "x$use_hidapi" = "xyes"])
 AM_CONDITIONAL([USE_LIBJAYLINK], [test "x$use_libjaylink" = "xyes"])
 AM_CONDITIONAL([TARGET64], [test "x$build_target64" = "xyes"])
+AM_CONDITIONAL([USE_FTD2XX], [test "x$build_ftd2xx" = "xyes"])
 
 AM_CONDITIONAL([MINIDRIVER], [test "x$build_minidriver" = "xyes"])
 AM_CONDITIONAL([MINIDRIVER_DUMMY], [test "x$build_minidriver_dummy" = "xyes"])
@@ -805,6 +833,10 @@ m4_foreach([adapter], [USB1_ADAPTERS, USB_ADAPTERS, USB0_ADAPTERS,
 	])
 ])
 echo
+
+AS_IF([test "x$build_ftd2xx" = "xyes"], [
+  echo "FTD2xx driver support enabled."
+])
 
 AS_IF([test "x$build_oocd_trace" = "xyes"], [
   echo 'WARNING! Deprecated configure option (--enable-oocd_trace)'
