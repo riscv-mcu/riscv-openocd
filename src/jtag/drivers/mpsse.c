@@ -30,6 +30,15 @@
 
 #ifdef BUILD_BACKEND_FTD2XX
 #include "ftd2xx/ftd2xx.h"
+
+#define FTD2XX_CHANNEL_MIN 0
+#define FTD2XX_CHANNEL_MAX 3
+char *ftd2xx_channel_names[] = {
+	"A",
+	"B",
+	"C",
+	"D",
+};
 #endif // BUILD_BACKEND_FTD2XX
 
 // FTD2XX and libusb compatibility
@@ -119,10 +128,7 @@ static bool string_descriptor_equal(libusb_device_handle *device, uint8_t str_in
 		return false;
 	}
 
-	// FTD2xx descriptor is "USB <-> JTAG-DEBUGGER A"
-	// libusb descriptor is "USB <-> JTAG-DEBUGGER"
-	// to implement cfg file compatibility, we only compare up to desc_string logical length
-	return strncmp(string, desc_string, MIN(strlen(desc_string), sizeof(desc_string))) == 0;
+	return strncmp(string, desc_string, sizeof(desc_string)) == 0;
 }
 
 static bool device_location_equal(libusb_device *device, const char *location)
@@ -193,116 +199,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 	int err;
 	bool found = false;
 	
-#ifdef BUILD_BACKEND_FTD2XX
-	// FTD2xx initialize first
-	FT_STATUS ft_status;
-
-	LOG_DEBUG("open_matching_device() FTD2xx init start");
-	DWORD ft_cnt;
-	ft_status = FT_CreateDeviceInfoList(&ft_cnt);
-	if (ft_status != FT_OK) {
-		LOG_ERROR("FT_CreateDeviceInfoList() error %lu", ft_status);
-		goto open_matching_device_fallback_libusb;
-	}
-	LOG_INFO("FT D2xx device count: %lu", ft_cnt);
-
-	FT_DEVICE_LIST_INFO_NODE *devInfo;
-	devInfo = (FT_DEVICE_LIST_INFO_NODE*)malloc(sizeof(FT_DEVICE_LIST_INFO_NODE) * ft_cnt);
-	DWORD ft_matched_device_id;
-	if (ft_cnt > 0) {
-		ft_status = FT_GetDeviceInfoList(devInfo, &ft_cnt);
-		if (ft_status == FT_OK) {
-			for (int i = 0; i < ft_cnt; i++) {
-				DWORD device_vid = devInfo[i].ID >> 16;   // higher 16 bits
-				DWORD device_pid = devInfo[i].ID & 65535; // lower 16 bits
-
-				LOG_DEBUG("FTD2xx Device #%d:", i);
-				LOG_DEBUG(" Flags=0x%lx", devInfo[i].Flags);
-				LOG_DEBUG(" Type=0x%lx", devInfo[i].Type);
-				LOG_DEBUG(" ID=0x%lx (VID=0x%04lx, PID=0x%04lx)", devInfo[i].ID, device_vid, device_pid);
-				LOG_DEBUG(" LocId=0x%lx", devInfo[i].LocId);
-				LOG_DEBUG(" SerialNumber=%s", devInfo[i].SerialNumber);
-				LOG_DEBUG(" Description=%s", devInfo[i].Description);
-				LOG_DEBUG(" ftHandle=0x%p", devInfo[i].ftHandle);
-				
-				if (vid && *vid != device_vid) continue;
-				if (pid && *pid != device_pid) continue;
-
-				// FIXME: check location does not work for now since libusb use a different location identifier from FTD2xx
-
-				if (product && strncmp(devInfo[i].Description, product, strlen(product))) continue;
-
-				if (serial && strncmp(devInfo[i].SerialNumber, serial, strlen(serial))) continue;
-
-				found = true;
-				ft_matched_device_id = i;
-				break;
-			}
-		} else {
-			LOG_ERROR("FT_GetDeviceInfoList() error %lu", ft_status);
-		}
-	}
-
-	if (!found) {
-		LOG_WARNING("D2xx driver found nothing, falling back to libusb...");
-		goto open_matching_device_fallback_libusb;
-	} else {
-		LOG_INFO("Connecting using D2xx mode...");
-	}
-
-	ctx -> backend = MPSSE_BACKEND_TYPE_FTD2XX;
-
-	switch (devInfo[ft_matched_device_id].Type) {
-	case FT_DEVICE_2232C:
-		ctx->type = TYPE_FT2232C;
-		break;
-	case FT_DEVICE_2232H:
-		ctx->type = TYPE_FT2232H;
-		break;
-	case FT_DEVICE_4232H:
-		ctx->type = TYPE_FT4232H;
-		break;
-	case FT_DEVICE_232H:
-		ctx->type = TYPE_FT232H;
-		break;
-	default:
-		LOG_ERROR("unsupported FTDI chip type (D2xx): 0x%04x", devInfo[ft_matched_device_id].Type);
-		goto error;
-	}
-
-	ft_status = FT_Open(ft_matched_device_id, &(ctx->usb_ft_handle));
-	if (ft_status != FT_OK)
-	{
-		LOG_ERROR("FT_Open() Failed with error %lu\n", ft_status);
-		goto error;
-	}
-
-	// Reset USB device
-	ft_status |= FT_ResetDevice(ctx->usb_ft_handle);
-	
-	// Set parameters
-	ft_status |= FT_SetUSBParameters(ctx->usb_ft_handle, ctx->max_packet_size, ctx->max_packet_size); // Set USB request transfer sizes
-	ft_status |= FT_SetChars(ctx->usb_ft_handle, false, 0, false, 0); // Disable event and error characters
-	// ft_status |= FT_SetFlowControl(ctx->usb_ft_handle, FT_FLOW_RTS_CTS, 0x00, 0x00); // Turn on flow control to synchronize IN requests
-	// ft_status |= FT_SetBaudRate(ctx->usb_ft_handle, 1000000);
-
-	// NOTE: this assumes usb timeouts does not change across the lifetime of the process;
-	// on the libusb side, timeouts are set per request. 
-	ft_status |= FT_SetTimeouts(ctx->usb_ft_handle, ctx->usb_read_timeout, ctx->usb_write_timeout); // Sets the read and write timeouts in milliseconds
-
-	if (ft_status != FT_OK)
-	{
-		LOG_ERROR("Error in initializing the MPSSE %lu\n", ft_status);
-		FT_Close(ctx->usb_ft_handle);
-		goto open_matching_device_fallback_libusb;
-	}
-
-	return true;
-
-open_matching_device_fallback_libusb:
-	LOG_DEBUG("open_matching_device() FTD2xx init end");
-#endif // BUILD_BACKEND_FTD2XX
-	// libusb
+	// try libusb first
 	ssize_t cnt = libusb_get_device_list(ctx->usb_ctx, &list);
 	if (cnt < 0)
 		LOG_ERROR("libusb_get_device_list() failed with %s", libusb_error_name(cnt));
@@ -351,7 +248,9 @@ open_matching_device_fallback_libusb:
 
 	if (!found) {
 		LOG_ERROR("no device found");
-		return false;
+		goto open_matching_device_libusb_not_matched;
+	} else {
+		LOG_INFO("Using libusb driver");
 	}
 
 	ctx -> backend = MPSSE_BACKEND_TYPE_LIBUSB;
@@ -448,6 +347,137 @@ open_matching_device_fallback_libusb:
 	libusb_free_config_descriptor(config0);
 	return true;
 
+open_matching_device_libusb_not_matched:
+#ifdef BUILD_BACKEND_FTD2XX
+	// try FTD2XX
+
+	LOG_DEBUG("open_matching_device() FTD2xx init start");
+	FT_STATUS ft_status;
+	DWORD ft_cnt;
+	ft_status = FT_CreateDeviceInfoList(&ft_cnt);
+	if (ft_status != FT_OK) {
+		LOG_ERROR("FT_CreateDeviceInfoList() error %lu", ft_status);
+		goto open_matching_device_fallback_libusb;
+	}
+	LOG_INFO("FT D2xx device count: %lu", ft_cnt);
+
+	// FTD2xx (except single-channel chips like FT232H) descriptor is "USB <-> JTAG-DEBUGGER A"
+	// libusb descriptor is "USB <-> JTAG-DEBUGGER"
+	// so the suffix is mapped to libusb channels for compatibility
+	char product_with_suffix[256];
+	if (product && ctx->interface >= FTD2XX_CHANNEL_MIN && ctx->interface <= FTD2XX_CHANNEL_MAX) {
+		snprintf(product_with_suffix, sizeof(product_with_suffix), "%s %s", product, ftd2xx_channel_names[ctx->interface]);
+	} else {
+		snprintf(product_with_suffix, sizeof(product_with_suffix), "%s", product);
+	}
+
+	FT_DEVICE_LIST_INFO_NODE *devInfo;
+	devInfo = (FT_DEVICE_LIST_INFO_NODE*)malloc(sizeof(FT_DEVICE_LIST_INFO_NODE) * ft_cnt);
+	DWORD ft_matched_device_id;
+	char *ft_matched_device_description = NULL;
+	if (ft_cnt > 0) {
+		ft_status = FT_GetDeviceInfoList(devInfo, &ft_cnt);
+		if (ft_status == FT_OK) {
+			for (int i = 0; i < ft_cnt; i++) {
+				DWORD device_vid = devInfo[i].ID >> 16;   // higher 16 bits
+				DWORD device_pid = devInfo[i].ID & 65535; // lower 16 bits
+
+				// LOG_DEBUG("FTD2xx Device #%d:", i);
+				// LOG_DEBUG(" Flags=0x%lx", devInfo[i].Flags);
+				// LOG_DEBUG(" Type=0x%lx", devInfo[i].Type);
+				// LOG_DEBUG(" ID=0x%lx (VID=0x%04lx, PID=0x%04lx)", devInfo[i].ID, device_vid, device_pid);
+				// LOG_DEBUG(" LocId=0x%lx", devInfo[i].LocId);
+				// LOG_DEBUG(" SerialNumber=%s", devInfo[i].SerialNumber);
+				// LOG_DEBUG(" Description=%s", devInfo[i].Description);
+				// LOG_DEBUG(" ftHandle=0x%p", devInfo[i].ftHandle);
+				
+				if (vid && *vid != device_vid) continue;
+				if (pid && *pid != device_pid) continue;
+
+				// FIXME: check location does not work for now since libusb use a different location identifier from FTD2xx
+
+				if (product) {
+					if (!strcmp(devInfo[i].Description, product)) {                         // whole string match -- for FT232H with only one channel
+						ft_matched_device_description = product;
+					}
+					else if (!strcmp(devInfo[i].Description, product_with_suffix)) {        // for FT2232H, etc. with multiple channels
+						ft_matched_device_description = product_with_suffix;
+					} else {
+						continue;
+					}
+				}
+
+				if (serial && strcmp(devInfo[i].SerialNumber, serial)) continue;
+
+				found = true;
+				ft_matched_device_id = i;
+				break;
+			}
+		} else {
+			LOG_ERROR("FT_GetDeviceInfoList() error %lu", ft_status);
+		}
+	}
+
+	if (!found) {
+		LOG_WARNING("D2xx driver found nothing, falling back to libusb...");
+		goto open_matching_device_fallback_libusb;
+	} else {
+		LOG_INFO("Connecting with \"%s\" using D2xx mode...", ft_matched_device_description);
+	}
+
+	ctx -> backend = MPSSE_BACKEND_TYPE_FTD2XX;
+
+	switch (devInfo[ft_matched_device_id].Type) {
+	case FT_DEVICE_2232C:
+		ctx->type = TYPE_FT2232C;
+		break;
+	case FT_DEVICE_2232H:
+		ctx->type = TYPE_FT2232H;
+		break;
+	case FT_DEVICE_4232H:
+		ctx->type = TYPE_FT4232H;
+		break;
+	case FT_DEVICE_232H:
+		ctx->type = TYPE_FT232H;
+		break;
+	default:
+		LOG_ERROR("unsupported FTDI chip type (D2xx): 0x%04x", devInfo[ft_matched_device_id].Type);
+		goto error;
+	}
+
+	ft_status = FT_Open(ft_matched_device_id, &(ctx->usb_ft_handle));
+	if (ft_status != FT_OK)
+	{
+		LOG_ERROR("FT_Open() Failed with error %lu\n", ft_status);
+		goto error;
+	}
+
+	// Reset USB device
+	ft_status |= FT_ResetDevice(ctx->usb_ft_handle);
+	
+	// Set parameters
+	ft_status |= FT_SetUSBParameters(ctx->usb_ft_handle, ctx->max_packet_size, ctx->max_packet_size); // Set USB request transfer sizes
+	ft_status |= FT_SetChars(ctx->usb_ft_handle, false, 0, false, 0); // Disable event and error characters
+	// ft_status |= FT_SetFlowControl(ctx->usb_ft_handle, FT_FLOW_RTS_CTS, 0x00, 0x00); // Turn on flow control to synchronize IN requests
+	// ft_status |= FT_SetBaudRate(ctx->usb_ft_handle, 1000000);
+
+	// NOTE: this assumes usb timeouts does not change across the lifetime of the process;
+	// on the libusb side, timeouts are set per request. 
+	ft_status |= FT_SetTimeouts(ctx->usb_ft_handle, ctx->usb_read_timeout, ctx->usb_write_timeout); // Sets the read and write timeouts in milliseconds
+
+	if (ft_status != FT_OK)
+	{
+		LOG_ERROR("Error in initializing the MPSSE %lu\n", ft_status);
+		FT_Close(ctx->usb_ft_handle);
+		goto open_matching_device_fallback_libusb;
+	}
+
+	return true;
+
+open_matching_device_fallback_libusb:
+	LOG_DEBUG("open_matching_device() FTD2xx init end");
+#endif // BUILD_BACKEND_FTD2XX
+
 desc_error:
 	LOG_ERROR("unrecognized USB device descriptor");
 error:
@@ -461,6 +491,7 @@ error:
 	libusb_free_config_descriptor(config0);
 	libusb_close(ctx->usb_dev);
 	BACKEND_DIVERGENCE_END
+
 	return false;
 }
 
