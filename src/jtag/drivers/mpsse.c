@@ -24,13 +24,13 @@
 #include "helper/log.h"
 #include <libusb.h>
 
-#if defined(_WIN32) && BUILD_FTD2XX == 1
+#if defined(_WIN32) && (BUILD_FTD2XX == 1)
 #define BUILD_BACKEND_FTD2XX
 #endif
 
 #ifdef BUILD_BACKEND_FTD2XX
 #include "ftd2xx/ftd2xx.h"
-#endif
+#endif // BUILD_BACKEND_FTD2XX
 
 // FTD2XX and libusb compatibility
 #define BACKEND_DIVERGENCE_START  switch (ctx->backend) { default:;
@@ -84,7 +84,7 @@ struct mpsse_ctx {
 #ifdef BUILD_BACKEND_FTD2XX
 	// ftd2xx backend
 	FT_HANDLE usb_ft_handle;
-#endif
+#endif // BUILD_BACKEND_FTD2XX
 
 	unsigned int usb_write_timeout;
 	unsigned int usb_read_timeout;
