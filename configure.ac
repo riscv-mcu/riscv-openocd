@@ -368,15 +368,7 @@ AS_CASE([$host_os],
       AS_HELP_STRING([--disable-ftd2xx], [Enable building support for native FTDI D2xx JTAG interface support (without libusb) on Windows.]),
         [build_ftd2xx=$enableval], [build_ftd2xx=yes])
 
-    AS_CASE(["${host_cpu}"],
-      [x86_64], [
-        LDFLAGS="$LDFLAGS -L${abs_top_builddir}/src/jtag/drivers/ftd2xx/amd64 -l:ftd2xx.lib"
-      ],
-      [i?86], [
-        LDFLAGS="$LDFLAGS -L${abs_top_builddir}/src/jtag/drivers/ftd2xx/i386 -l:ftd2xx.lib"
-      ],
-      []
-    )
+    LDFLAGS="$LDFLAGS -l:ftd2xx.lib"
   ],
   [
     AS_IF([test "x$build_ftd2xx" = "xyes"], [
