@@ -3246,7 +3246,7 @@ static int riscv013_test_sba_config_reg(struct target *target,
 	uint32_t max_sbdata_regs = get_num_sbdata_regs(target);
 	uint32_t num_sbdata_regs;
 
-	uint32_t rd_buf[num_sbdata_regs];
+	uint32_t rd_buf[max_sbdata_regs];
 
 	/* Test 1: Simple write/read test */
 	test_passed = true;
