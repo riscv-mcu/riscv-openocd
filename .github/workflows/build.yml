@@ -1,0 +1,65 @@
+name: Build Nuclei OpenOCD
+
+on:
+  push:
+    branches: [ nuclei* ]
+  pull_request:
+    branches: [ nuclei* ]
+
+jobs:
+  build:
+    name: build on ${{ matrix.os }} 
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-16.04]
+    env: 
+      CC: gcc-8
+      CXX: g++-8
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        fetch-depth: 0
+        path: openocd.git
+    - uses: actions/checkout@v2
+      with:
+        repository: riscv-mcu/openocd-xpack
+        submodules: recursive
+        fetch-depth: 0
+        path: openocd-xpack
+    - name: Preload docker images
+      run: |
+        cd openocd-xpack
+        # Remove --tty in script to try to avoid error: the input device is not a TTY
+        # No need for non-ci run
+        find scripts/ -type f | xargs sed -i -e 's/--tty/ /g'
+        bash ./scripts/build.sh preload-images
+        # Change version to develop
+        echo "develop" > ./scripts/VERSION
+        cd ..
+    - name: Prepare openocd source code
+      run: |
+        mkdir -p ${HOME}/Work/openocd-develop/
+        mv openocd.git ${HOME}/Work/openocd-develop/
+    - name: Build nuclei openocd
+      run: |
+        cd openocd-xpack
+        export COMPOSE_INTERACTIVE_NO_CLI=1
+        bash ./scripts/build.sh --all
+        cd ../
+    - name: Archive nuclei openocd
+      run: |
+        OPENOCD_DEPLOY=$(readlink -f $HOME/Work/openocd-*/deploy)
+        WORKPWD=$(pwd)
+        cd $OPENOCD_DEPLOY
+        zip -9 -q -r ${WORKPWD}/nuclei_openocd.zip .
+    - name: Upload openocd artifact
+      uses: actions/upload-artifact@v2
+      with:
+        # Artifact name
+        name: nuclei_openocd_build
+        # A file, directory or wildcard pattern that describes what to upload
+        path: nuclei_openocd.zip
+
