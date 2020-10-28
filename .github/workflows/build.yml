@@ -18,12 +18,14 @@ jobs:
       CXX: g++-8
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout openocd source code
+      uses: actions/checkout@v2
       with:
         submodules: recursive
         fetch-depth: 0
         path: openocd.git
-    - uses: actions/checkout@v2
+    - name: Checkout openocd-xpack tools
+      uses: actions/checkout@v2
       with:
         repository: riscv-mcu/openocd-xpack
         submodules: recursive
@@ -42,6 +44,9 @@ jobs:
     - name: Prepare openocd source code
       run: |
         mkdir -p ${HOME}/Work/openocd-develop/
+        # move previously already cloned source code to xpack build directory
+        # to avoid clone it again in xpack script
+        # Need to use develop version for xpack scripts
         mv openocd.git ${HOME}/Work/openocd-develop/
     - name: Build nuclei openocd
       run: |

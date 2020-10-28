@@ -7,7 +7,7 @@ please follow this [guidance](https://github.com/riscv-mcu/openocd-xpack/blob/xp
 
 About how to use openocd, please check http://openocd.org/documentation/
 
-![Build Nuclei OpenOCD](https://github.com/riscv-mcu/openocd-xpack/workflows/Build%20Nuclei%20OpenOCD/badge.svg)
+![Build Nuclei OpenOCD](https://github.com/riscv-mcu/riscv-openocd/workflows/Build%20Nuclei%20OpenOCD/badge.svg)
 
 - `nuclei-master` - the updated content, used during builds and releases
 - `nuclei-develop` - the updated content, used during development
