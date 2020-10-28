@@ -1,5 +1,18 @@
 [![Github All Releases](https://img.shields.io/github/downloads/xpack-dev-tools/openocd/total.svg)](https://github.com/xpack-dev-tools/openocd/releases/)
 
+# Notice
+
+If you are looking for how to build Nuclei OpenOCD,
+please follow this [guidance](https://github.com/riscv-mcu/openocd-xpack/blob/xpack-nuclei-build/README-BUILD-Nuclei.md)
+
+About how to use openocd, please check http://openocd.org/documentation/
+
+![Build Nuclei OpenOCD](https://github.com/riscv-mcu/openocd-xpack/workflows/Build%20Nuclei%20OpenOCD/badge.svg)
+
+- `nuclei-master` - the updated content, used during builds and releases
+- `nuclei-develop` - the updated content, used during development
+
+
 # The xPack OpenOCD fork
 
 This repository is a fork of the official [OpenOCD](http://openocd.org)
