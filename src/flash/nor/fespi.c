@@ -62,6 +62,7 @@
 #define FESPI_REG_RXFIFO          0x4c
 #define FESPI_REG_TXCTRL          0x50
 #define FESPI_REG_RXCTRL          0x54
+#define FESPI_REG_STATUS		  0x7c
 
 #define FESPI_REG_FCTRL           0x60
 #define FESPI_REG_FFMT            0x64
@@ -100,6 +101,9 @@
 #define FESPI_INSN_CMD_CODE(x)    (((x) & 0xff) << 16)
 #define FESPI_INSN_PAD_CODE(x)    (((x) & 0xff) << 24)
 
+#define FESPI_STAT_TXFULL		  (0x1 << 4)
+#define FESPI_STAT_RXEMPTY		  (0x1 << 5)
+
 /* Values */
 
 #define FESPI_CSMODE_AUTO         0
@@ -126,7 +130,7 @@
 
 struct fespi_flash_bank {
 	int probed;
-	int version;
+	uint32_t version;
 	int fespi_flags;
 	target_addr_t ctrl_base;
 	const struct flash_device *dev;
@@ -260,20 +264,40 @@ static int fespi_txwm_wait(struct flash_bank *bank)
 static int fespi_tx(struct flash_bank *bank, uint8_t in)
 {
 	int64_t start = timeval_ms();
+	struct fespi_flash_bank *fespi_info = bank->driver_priv;
+	if(fespi_info->fespi_flags & FESPI_FLAGS_32B_DAT)
+	{
+		while (1) {
+			uint32_t status;
+			if (fespi_read_reg(bank, &status, FESPI_REG_STATUS) != ERROR_OK)
+				return ERROR_FAIL;
 
-	while (1) {
-		uint32_t txfifo;
-		if (fespi_read_reg(bank, &txfifo, FESPI_REG_TXFIFO) != ERROR_OK)
-			return ERROR_FAIL;
-		if (!(txfifo >> 31))
-			break;
-		int64_t now = timeval_ms();
-		if (now - start > 1000) {
-			LOG_ERROR("txfifo stayed negative.");
-			return ERROR_TARGET_TIMEOUT;
+			if (!(status & FESPI_STAT_TXFULL))
+				break;
+			int64_t now = timeval_ms();
+			if (now - start > 1000) {
+				LOG_ERROR("txfifo stayed negative.");
+				return ERROR_TARGET_TIMEOUT;
+			}
 		}
 	}
+	else
+	{
+		
+		while (1) {
+			uint32_t txfifo;
+			if (fespi_read_reg(bank, &txfifo, FESPI_REG_TXFIFO) != ERROR_OK)
+				return ERROR_FAIL;
 
+			if (!(txfifo >> 31))
+				break;
+			int64_t now = timeval_ms();
+			if (now - start > 1000) {
+				LOG_ERROR("txfifo stayed negative.");
+				return ERROR_TARGET_TIMEOUT;
+			}
+		}
+	}
 	return fespi_write_reg(bank, FESPI_REG_TXFIFO, in);
 }
 
@@ -281,16 +305,35 @@ static int fespi_rx(struct flash_bank *bank, uint8_t *out)
 {
 	int64_t start = timeval_ms();
 	uint32_t value;
-
-	while (1) {
-		if (fespi_read_reg(bank, &value, FESPI_REG_RXFIFO) != ERROR_OK)
-			return ERROR_FAIL;
-		if (!(value >> 31))
-			break;
-		int64_t now = timeval_ms();
-		if (now - start > 1000) {
-			LOG_ERROR("rxfifo didn't go positive (value=0x%x).", value);
-			return ERROR_TARGET_TIMEOUT;
+	struct fespi_flash_bank *fespi_info = bank->driver_priv;
+	if(fespi_info->fespi_flags & FESPI_FLAGS_32B_DAT)
+	{
+		while (1) {
+			if (fespi_read_reg(bank, &value, FESPI_REG_STATUS) != ERROR_OK)
+				return ERROR_FAIL;
+			if (!(value & FESPI_STAT_RXEMPTY))
+				break;
+			if (fespi_read_reg(bank, &value, FESPI_REG_RXFIFO) != ERROR_OK)
+				return ERROR_FAIL;			
+			int64_t now = timeval_ms();
+			if (now - start > 1000) {
+				LOG_ERROR("rxfifo didn't go positive (value=0x%x).", value);
+				return ERROR_TARGET_TIMEOUT;
+			}
+		}
+	}
+	else
+	{
+		while (1) {
+			if (fespi_read_reg(bank, &value, FESPI_REG_RXFIFO) != ERROR_OK)
+				return ERROR_FAIL;
+			if (!(value >> 31))
+				break;
+			int64_t now = timeval_ms();
+			if (now - start > 1000) {
+				LOG_ERROR("rxfifo didn't go positive (value=0x%x).", value);
+				return ERROR_TARGET_TIMEOUT;
+			}
 		}
 	}
 
