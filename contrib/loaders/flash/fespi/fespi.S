@@ -6,10 +6,13 @@
 #define FESPI_REG_TXFIFO          0x48
 #define FESPI_REG_RXFIFO          0x4c
 #define FESPI_REG_IP              0x74
+#define FESPI_REG_STATUS		  0x7c
 
 // Fields
 #define FESPI_IP_TXWM             0x1
 #define FESPI_FMT_DIR(x)          (((x) & 0x1) << 3)
+#define FESPI_STAT_TXFULL		  (0x1 << 4)
+#define FESPI_STAT_RXEMPTY		  (0x1 << 5)
 
 // To enter, jump to the start of command_table (ie. offset 0).
 //      a0 - FESPI base address
@@ -30,6 +33,9 @@ command_table:
 		j       write_reg       // 16
 		j		wip_wait		// 20
 		j		set_dir			// 24
+		j		tx_32b			// 28
+		j		wip_wait_32b	// 32
+
 
 // Execute the program.
 main:
@@ -46,6 +52,24 @@ tx:
 		addi    a1, a1, 1
 1:      lw      t0, FESPI_REG_TXFIFO(a0)        // wait for FIFO clear
 		bltz    t0, 1b
+		lbu     t0, 0(a1)       // Load byte to write
+		sw      t0, FESPI_REG_TXFIFO(a0)
+		addi    a1, a1, 1
+		addi    t1, t1, -1
+		bgtz    t1, 1b
+		j       main
+
+// Read 1 byte the contains the number of bytes to transmit. Then read those
+// bytes from the program and transmit them one by one, 32bit version
+tx_32b:
+		li		t2, FESPI_STAT_TXFULL
+		
+		lbu     t1, 0(a1)       // read number of bytes to transmit
+		addi    a1, a1, 1
+1:      lw      t0, FESPI_REG_STATUS(a0)        // wait for FIFO clear
+		and		t0, t2, t1
+		bnez	t0, 1b
+
 		lbu     t0, 0(a1)       // Load byte to write
 		sw      t0, FESPI_REG_TXFIFO(a0)
 		addi    a1, a1, 1
@@ -80,12 +104,37 @@ wip_wait:
 		bnez	t0, 1b
 		j		main
 
+wip_wait_32b:
+		li		a2, SPIFLASH_READ_STATUS
+		jal		txrx_byte_32b
+		// discard first result
+1:		li		a2, 0
+		jal		txrx_byte_32b
+		andi	t0, a2, SPIFLASH_BSY_BIT
+		bnez	t0, 1b
+		j		main
+
 txrx_byte:	// transmit the byte in a2, receive a bit into a2
 		lw      t0, FESPI_REG_TXFIFO(a0)        // wait for FIFO clear
 		bltz    t0, txrx_byte
 		sw      a2, FESPI_REG_TXFIFO(a0)
 1:		lw		a2, FESPI_REG_RXFIFO(a0)
 		bltz	a2, 1b
+		ret
+
+txrx_byte_32b:	// transmit the byte in a2, receive a bit into a2
+		li		t1, FESPI_STAT_TXFULL
+2:
+		lw		t2, FESPI_REG_STATUS(a0)        
+		and		t2, t2, t1
+		bnez    t2, 2b	// wait for FIFO clear
+
+		li		t1, FESPI_STAT_RXEMPTY
+		sw      a2, FESPI_REG_TXFIFO(a0)
+1:		lw		t2, FESPI_REG_STATUS(a0)
+		and		t2, t2, t1
+		bnez	t2, 1b	// wait for FIFO have data
+		lw		a2, FESPI_REG_RXFIFO(a0)
 		ret
 
 set_dir:

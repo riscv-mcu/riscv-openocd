@@ -69,6 +69,8 @@
 #define FESPI_REG_IE              0x70
 #define FESPI_REG_IP              0x74
 
+#define FESPI_REG_VERSION		  0x1C	
+
 /* Fields */
 
 #define FESPI_SCK_POL             0x1
@@ -120,9 +122,12 @@
 #define FESPI_PROBE_TIMEOUT (100)
 #define FESPI_MAX_TIMEOUT  (3000)
 
+#define FESPI_FLAGS_32B_DAT (1<<0)
 
 struct fespi_flash_bank {
 	int probed;
+	int version;
+	int fespi_flags;
 	target_addr_t ctrl_base;
 	const struct flash_device *dev;
 };
@@ -491,6 +496,8 @@ static const uint8_t algorithm_bin[] = {
 #define STEP_WRITE_REG		16
 #define STEP_WIP_WAIT		20
 #define STEP_SET_DIR		24
+#define STEP_TX_32B			28
+#define STEP_WIP_WAIT_32B	32
 #define STEP_NOP			0xff
 
 struct algorithm_steps {
@@ -539,6 +546,7 @@ static unsigned as_compile(struct algorithm_steps *as, uint8_t *target,
 			case STEP_NOP:
 				break;
 			case STEP_TX:
+			case STEP_TX_32B:
 				{
 					unsigned size = as->steps[s][1];
 					if (size + 3 > bytes_left) {
@@ -567,6 +575,7 @@ static unsigned as_compile(struct algorithm_steps *as, uint8_t *target,
 				break;
 			case STEP_TXWM_WAIT:
 			case STEP_WIP_WAIT:
+			case STEP_WIP_WAIT_32B:
 				if (2 > bytes_left) {
 					finish_early = true;
 					break;
@@ -605,13 +614,16 @@ static void as_add_step(struct algorithm_steps *as, uint8_t *step)
 	as->used++;
 }
 
-static void as_add_tx(struct algorithm_steps *as, unsigned count, const uint8_t *data)
+static void as_add_tx(struct fespi_flash_bank *info, struct algorithm_steps *as, unsigned count, const uint8_t *data)
 {
 	LOG_DEBUG("count=%d", count);
 	while (count > 0) {
 		unsigned step_count = MIN(count, 255);
 		uint8_t *step = malloc(step_count + 2);
-		step[0] = STEP_TX;
+		if(info->fespi_flags & FESPI_FLAGS_32B_DAT)
+			step[0] = STEP_TX_32B;
+		else
+			step[0] = STEP_TX;
 		step[1] = step_count;
 		memcpy(step + 2, data, step_count);
 		as_add_step(as, step);
@@ -620,11 +632,11 @@ static void as_add_tx(struct algorithm_steps *as, unsigned count, const uint8_t 
 	}
 }
 
-static void as_add_tx1(struct algorithm_steps *as, uint8_t byte)
+static void as_add_tx1(struct fespi_flash_bank *info, struct algorithm_steps *as, uint8_t byte)
 {
 	uint8_t data[1];
 	data[0] = byte;
-	as_add_tx(as, 1, data);
+	as_add_tx(info, as, 1, data);
 }
 
 static void as_add_write_reg(struct algorithm_steps *as, uint8_t offset, uint8_t data)
@@ -643,10 +655,14 @@ static void as_add_txwm_wait(struct algorithm_steps *as)
 	as_add_step(as, step);
 }
 
-static void as_add_wip_wait(struct algorithm_steps *as)
+static void as_add_wip_wait(struct fespi_flash_bank *info, struct algorithm_steps *as)
 {
 	uint8_t *step = malloc(1);
-	step[0] = STEP_WIP_WAIT;
+	if(info->fespi_flags & FESPI_FLAGS_32B_DAT)
+		step[0] = STEP_WIP_WAIT_32B;
+	else
+		step[0] = STEP_WIP_WAIT;
+	
 	as_add_step(as, step);
 }
 
@@ -659,7 +675,7 @@ static void as_add_set_dir(struct algorithm_steps *as, bool dir)
 }
 
 /* This should write something less than or equal to a page.*/
-static int steps_add_buffer_write(struct algorithm_steps *as,
+static int steps_add_buffer_write(struct fespi_flash_bank *info, struct algorithm_steps *as,
 		const uint8_t *buffer, uint32_t chip_offset, uint32_t len)
 {
 	if (chip_offset & 0xFF000000) {
@@ -668,7 +684,7 @@ static int steps_add_buffer_write(struct algorithm_steps *as,
 		return ERROR_FAIL;
 	}
 
-	as_add_tx1(as, SPIFLASH_WRITE_ENABLE);
+	as_add_tx1(info, as, SPIFLASH_WRITE_ENABLE);
 	as_add_txwm_wait(as);
 	as_add_write_reg(as, FESPI_REG_CSMODE, FESPI_CSMODE_HOLD);
 
@@ -678,16 +694,16 @@ static int steps_add_buffer_write(struct algorithm_steps *as,
 		chip_offset >> 8,
 		chip_offset,
 	};
-	as_add_tx(as, sizeof(setup), setup);
+	as_add_tx(info, as, sizeof(setup), setup);
 
-	as_add_tx(as, len, buffer);
+	as_add_tx(info, as, len, buffer);
 	as_add_txwm_wait(as);
 	as_add_write_reg(as, FESPI_REG_CSMODE, FESPI_CSMODE_AUTO);
 
 	/* fespi_wip() */
 	as_add_set_dir(as, FESPI_DIR_RX);
 	as_add_write_reg(as, FESPI_REG_CSMODE, FESPI_CSMODE_HOLD);
-	as_add_wip_wait(as);
+	as_add_wip_wait(info, as);
 	as_add_write_reg(as, FESPI_REG_CSMODE, FESPI_CSMODE_AUTO);
 	as_add_set_dir(as, FESPI_DIR_TX);
 
@@ -834,7 +850,7 @@ static int fespi_write(struct flash_bank *bank, const uint8_t *buffer,
 			cur_count = count;
 
 		if (algorithm_wa)
-			retval = steps_add_buffer_write(as, buffer, offset, cur_count);
+			retval = steps_add_buffer_write(fespi_info, as, buffer, offset, cur_count);
 		else
 			retval = slow_fespi_write_buffer(bank, buffer, offset, cur_count);
 		if (retval != ERROR_OK)
@@ -966,6 +982,14 @@ static int fespi_probe(struct flash_bank *bank)
 			  " with ctrl at " TARGET_ADDR_FMT, fespi_info->ctrl_base,
 			  bank->base);
 	}
+
+	if (fespi_read_reg(bank, &fespi_info->version, FESPI_REG_VERSION) != ERROR_OK)
+		return ERROR_FAIL;
+	fespi_info->fespi_flags = 0;
+	LOG_INFO("Nuclei SPI controller version 0x%08x", fespi_info->version);
+
+	if(fespi_info->version >= 0x00101000)
+		fespi_info->fespi_flags |= FESPI_FLAGS_32B_DAT;
 
 	/* read and decode flash ID; returns in SW mode */
 	if (fespi_write_reg(bank, FESPI_REG_TXCTRL, FESPI_TXWM(1)) != ERROR_OK)
