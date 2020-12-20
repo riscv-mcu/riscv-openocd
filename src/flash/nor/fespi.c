@@ -70,7 +70,7 @@
 #define FESPI_REG_IE              0x70
 #define FESPI_REG_IP              0x74
 
-#define FESPI_REG_VERSION		  0x1C	
+#define FESPI_REG_VERSION		  0x1C
 
 /* Fields */
 
@@ -283,7 +283,7 @@ static int fespi_tx(struct flash_bank *bank, uint8_t in)
 	}
 	else
 	{
-		
+
 		while (1) {
 			uint32_t txfifo;
 			if (fespi_read_reg(bank, &txfifo, FESPI_REG_TXFIFO) != ERROR_OK)
@@ -311,16 +311,16 @@ static int fespi_rx(struct flash_bank *bank, uint8_t *out)
 		while (1) {
 			if (fespi_read_reg(bank, &value, FESPI_REG_STATUS) != ERROR_OK)
 				return ERROR_FAIL;
-			if (!(value & FESPI_STAT_RXEMPTY))
+			if (!(value & FESPI_STAT_RXEMPTY)) //RXEMPTY
 				break;
-			if (fespi_read_reg(bank, &value, FESPI_REG_RXFIFO) != ERROR_OK)
-				return ERROR_FAIL;			
 			int64_t now = timeval_ms();
 			if (now - start > 1000) {
 				LOG_ERROR("rxfifo didn't go positive (value=0x%x).", value);
 				return ERROR_TARGET_TIMEOUT;
 			}
 		}
+		if (fespi_read_reg(bank, &value, FESPI_REG_RXFIFO) != ERROR_OK)
+			return ERROR_FAIL;
 	}
 	else
 	{
@@ -705,7 +705,7 @@ static void as_add_wip_wait(struct fespi_flash_bank *info, struct algorithm_step
 		step[0] = STEP_WIP_WAIT_32B;
 	else
 		step[0] = STEP_WIP_WAIT;
-	
+
 	as_add_step(as, step);
 }
 
@@ -1031,7 +1031,7 @@ static int fespi_probe(struct flash_bank *bank)
 	fespi_info->fespi_flags = 0;
 	LOG_INFO("Nuclei SPI controller version 0x%08x", fespi_info->version);
 
-	if(fespi_info->version >= 0x00101000)
+	if(fespi_info->version >= 0x00010100)
 		fespi_info->fespi_flags |= FESPI_FLAGS_32B_DAT;
 
 	/* read and decode flash ID; returns in SW mode */
