@@ -220,7 +220,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 
 		err = libusb_open(device, &ctx->usb_dev);
 		if (err != LIBUSB_SUCCESS) {
-			LOG_ERROR("libusb_open() failed with %s",
+			LOG_INFO("libusb_open() failed with %s",
 				  libusb_error_name(err));
 			continue;
 		}
@@ -247,7 +247,7 @@ static bool open_matching_device(struct mpsse_ctx *ctx, const uint16_t *vid, con
 	libusb_free_device_list(list, 1);
 
 	if (!found) {
-		LOG_ERROR("no device found");
+		LOG_INFO("no device found, trying D2xx driver");
 		goto libusb_abort;
 	} else {
 		LOG_INFO("Using libusb driver");
