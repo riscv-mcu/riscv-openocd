@@ -19,6 +19,7 @@
 #define OPENOCD_JTAG_DRIVERS_USB_COMMON_H
 
 #include <usb.h>
+#include <stdint.h>
 
 int jtag_usb_open(const uint16_t vids[], const uint16_t pids[],
 		struct usb_dev_handle **out);
