@@ -79,7 +79,8 @@ static int rtos_target_for_threadid(struct connection *connection,
 	return ERROR_OK;
 }
 
-static int os_alloc(struct target *target, struct rtos_type *ostype)
+static int os_alloc(struct target *target, struct rtos_type *ostype,
+					struct command_context *cmd_ctx)
 {
 	struct rtos *os = target->rtos = calloc(1, sizeof(struct rtos));
 
@@ -96,6 +97,7 @@ static int os_alloc(struct target *target, struct rtos_type *ostype)
 	os->gdb_thread_packet = rtos_thread_packet;
 	os->gdb_v_packet = NULL;
 	os->gdb_target_for_threadid = rtos_target_for_threadid;
+	os->cmd_ctx = cmd_ctx;
 
 	return JIM_OK;
 }
@@ -110,9 +112,10 @@ static void os_free(struct target *target)
 	target->rtos = NULL;
 }
 
-static int os_alloc_create(struct target *target, struct rtos_type *ostype)
+static int os_alloc_create(struct target *target, struct rtos_type *ostype,
+						   struct command_context *cmd_ctx)
 {
-	int ret = os_alloc(target, ostype);
+	int ret = os_alloc(target, ostype, cmd_ctx);
 
 	if (JIM_OK == ret) {
 		ret = target->rtos->type->create(target);
@@ -135,6 +138,8 @@ int rtos_create(Jim_GetOptInfo *goi, struct target *target)
 		return JIM_ERR;
 	}
 
+	struct command_context *cmd_ctx = current_command_context(goi->interp);
+
 	os_free(target);
 
 	e = Jim_GetOpt_String(goi, &cp, NULL);
@@ -149,12 +154,12 @@ int rtos_create(Jim_GetOptInfo *goi, struct target *target)
 
 		/* rtos_qsymbol() will iterate over all RTOSes. Allocate
 		 * target->rtos here, and set it to the first RTOS type. */
-		return os_alloc(target, rtos_types[0]);
+		return os_alloc(target, rtos_types[0], cmd_ctx);
 	}
 
 	for (x = 0; rtos_types[x]; x++)
 		if (0 == strcmp(cp, rtos_types[x]->name))
-			return os_alloc_create(target, rtos_types[x]);
+			return os_alloc_create(target, rtos_types[x], cmd_ctx);
 
 	Jim_SetResultFormatted(goi->interp, "Unknown RTOS type %s, try one of: ", cp);
 	res = Jim_GetResult(goi->interp);
@@ -607,7 +612,7 @@ int rtos_generic_stack_read(struct target *target,
 		LOG_OUTPUT("\r\n");
 #endif
 
-	int64_t new_stack_ptr;
+	target_addr_t new_stack_ptr;
 	if (stacking->calculate_process_stack != NULL) {
 		new_stack_ptr = stacking->calculate_process_stack(target,
 				stack_data, stacking, stack_ptr);
@@ -653,7 +658,7 @@ int rtos_generic_stack_read_reg(struct target *target,
 	}
 	if (i >= total_count) {
 		/* This register is not on the stack. Return error so a caller somewhere
-		 * will just read the register directly fromt he target. */
+		 * will just read the register directly from the target. */
 		return ERROR_FAIL;
 	}
 
@@ -675,6 +680,58 @@ int rtos_generic_stack_read_reg(struct target *target,
 				  buf_get_u64(reg->value, 0, 64));
 	} else {
 		memset(reg->value, 0, width_bytes);
+	}
+
+	return ERROR_OK;
+}
+
+int rtos_generic_stack_write_reg(struct target *target,
+								const struct rtos_register_stacking *stacking,
+								target_addr_t stack_ptr,
+								uint32_t reg_num, uint8_t *reg_value)
+{
+	LOG_DEBUG("stack_ptr=" TARGET_ADDR_FMT ", reg_num=%d", stack_ptr, reg_num);
+	unsigned total_count = MAX(stacking->total_register_count, stacking->num_output_registers);
+	unsigned i;
+	for (i = 0; i < total_count; i++) {
+		if (stacking->register_offsets[i].number == reg_num)
+			break;
+	}
+	if (i >= total_count) {
+		/* This register is not on the stack. Return error so a caller somewhere
+		 * will just read the register directly from the target. */
+		return ERROR_FAIL;
+	}
+
+	const struct stack_register_offset *offsets = &stacking->register_offsets[i];
+
+	unsigned width_bytes = DIV_ROUND_UP(offsets->width_bits, 8);
+	if (offsets->offset >= 0) {
+		target_addr_t address = stack_ptr;
+
+		if (stacking->stack_growth_direction == 1)
+			address -= stacking->stack_registers_size;
+
+		LOG_DEBUG("write 0x%" PRIx64 " to register %d",
+				  buf_get_u64(reg_value, 0, offsets->width_bits), reg_num);
+		if (target_write_buffer(
+				target, address + offsets->offset,
+				width_bytes, reg_value) != ERROR_OK)
+			return ERROR_FAIL;
+	} else if (offsets->offset == -1) {
+		/* This register isn't on the stack, but is listed as one of those. We
+		 * read it as 0, and ignore writes. */
+	} else if (offsets->offset == -2) {
+		/* This register requires computation when we "read" it. I'm not sure
+		 * how to handle writes. We can't simply return error here because then
+		 * the higher level code will end up writing the register in the halted
+		 * core, which is definitely not the same as writing it for a thread. */
+		LOG_ERROR("Don't know how to write register %d with offset -2 in a thread.",
+				  reg_num);
+		assert(0);
+	} else {
+		LOG_ERROR("Don't know how to handle offset <2.");
+		assert(0);
 	}
 
 	return ERROR_OK;
