@@ -396,6 +396,21 @@ AC_ARG_ENABLE([remote-bitbang],
   AS_HELP_STRING([--enable-remote-bitbang], [Enable building support for the Remote Bitbang jtag driver]),
   [build_remote_bitbang=$enableval], [build_remote_bitbang=yes])
 
+AC_MSG_CHECKING([whether to enable ftd2xx driver])
+AS_CASE([$host_os],
+  [cygwin*|mingw*], [
+    AC_ARG_ENABLE([ftd2xx],
+      AS_HELP_STRING([--disable-ftd2xx], [Enable building support for native FTDI D2xx JTAG interface support (without libusb) on Windows.]),
+        [build_ftd2xx=$enableval], [build_ftd2xx=yes])
+
+    LDFLAGS="$LDFLAGS -l:ftd2xx.lib"
+  ],
+  [
+    AS_IF([test "x$build_ftd2xx" = "xyes"], [
+      AC_MSG_ERROR([ftd2xx is only available on Windows])
+    ])
+])
+
 AC_MSG_CHECKING([whether to enable dummy minidriver])
 AS_IF([test "x$build_minidriver_dummy" = "xyes"], [
   AS_IF([test "x$build_minidriver" = "xyes"], [
@@ -640,6 +655,12 @@ AS_IF([test "x$build_xlnx_pcie_xvc" = "xyes"], [
   AC_DEFINE([BUILD_XLNX_PCIE_XVC], [0], [0 if you don't want Xilinx XVC/PCIe driver.])
 ])
 
+AS_IF([test "x$build_ftd2xx" = "xyes"], [
+  AC_DEFINE([BUILD_FTD2XX], [1], [1 if you want the FTD2xx driver support.])
+], [
+  AC_DEFINE([BUILD_FTD2XX], [0], [0 if you don't want FTD2xx driver support.])
+])
+
 PKG_CHECK_MODULES([LIBUSB1], [libusb-1.0], [
 	use_libusb1=yes
 	AC_DEFINE([HAVE_LIBUSB1], [1], [Define if you have libusb-1.x])
@@ -795,6 +816,7 @@ AM_CONDITIONAL([USE_HIDAPI], [test "x$use_hidapi" = "xyes"])
 AM_CONDITIONAL([USE_LIBJAYLINK], [test "x$use_libjaylink" = "xyes"])
 AM_CONDITIONAL([RSHIM], [test "x$build_rshim" = "xyes"])
 AM_CONDITIONAL([HAVE_CAPSTONE], [test "x$enable_capstone" != "xno"])
+AM_CONDITIONAL([USE_FTD2XX], [test "x$build_ftd2xx" = "xyes"])
 
 AM_CONDITIONAL([MINIDRIVER], [test "x$build_minidriver" = "xyes"])
 AM_CONDITIONAL([MINIDRIVER_DUMMY], [test "x$build_minidriver_dummy" = "xyes"])
@@ -882,6 +904,10 @@ m4_foreach([adapter], [USB1_ADAPTERS, USB0_ADAPTERS,
 	])
 ])
 echo
+
+AS_IF([test "x$build_ftd2xx" = "xyes"], [
+  echo "FTD2xx driver support enabled."
+])
 
 AS_IF([test "x$build_oocd_trace" = "xyes"], [
   echo 'WARNING! Deprecated configure option (--enable-oocd_trace)'
