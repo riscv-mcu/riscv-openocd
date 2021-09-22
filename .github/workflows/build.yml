@@ -1,5 +1,9 @@
 name: Build Nuclei OpenOCD
 
+on:
+  push:
+  pull_request:
+
 jobs:
   build:
     name: build on ${{ matrix.os }}
