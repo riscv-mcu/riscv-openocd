@@ -25,7 +25,7 @@ jobs:
         repository: riscv-mcu/openocd-xpack
         submodules: recursive
         fetch-depth: 0
-        branch: xpack_nuclei_next
+        ref: xpack_nuclei_next
         path: openocd-xpack
     - name: Preload docker images
       run: |
