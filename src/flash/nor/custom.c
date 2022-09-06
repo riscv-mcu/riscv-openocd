@@ -27,6 +27,7 @@
 #include <helper/time_support.h>
 #include <target/algorithm.h>
 #include "target/riscv/riscv.h"
+#include <helper/configuration.h>
 
 #define ERASE_CMD			(1)
 #define WRITE_CMD			(2)
@@ -63,6 +64,9 @@ static int custom_run_algorithm(struct flash_bank *bank)
 	size_t bin_size;
 
 	FILE* fd = fopen((char*)bank_msg->loader_path, "rb");
+	if (NULL == fd) {
+		fd = fopen(find_file(strrchr((char*)bank_msg->loader_path, '/')), "rb");
+	}
 	if (fd) {
 		fseek(fd, 0, SEEK_END);
 		bin_size = ftell(fd);
@@ -307,6 +311,10 @@ FLASH_BANK_COMMAND_HANDLER(custom_flash_bank_command)
 			bank_msg->ctrl_base);
 	bank_msg->loader_path = malloc(strlen(CMD_ARGV[7]));
 	strcpy((char*)bank_msg->loader_path, CMD_ARGV[7]);
+	for (char *p = bank_msg->loader_path; *p; p++) {
+		if (*p == '\\')
+			*p = '/';
+	}
 	bank_msg->simulation = false;
 	if (CMD_ARGC >= 9) {
 		if(strcmp(CMD_ARGV[8], "simulation") == 0) {

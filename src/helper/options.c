@@ -302,6 +302,13 @@ int parse_cmdline_args(struct command_context *cmd_ctx, int argc, char *argv[])
 				char *command = alloc_printf("script {%s}", optarg);
 				add_config_command(command);
 				free(command);
+				/* add script to search_dir */
+				*strrchr(optarg, '/') = '\0';
+				for (char *p = optarg; *p; p++) {
+					if (*p == '\\')
+						*p = '/';
+				}
+				add_script_search_dir(optarg);
 				break;
 			}
 			case 's':		/* --search | -s */
