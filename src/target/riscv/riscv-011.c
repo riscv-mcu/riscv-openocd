@@ -1198,8 +1198,7 @@ static int full_step(struct target *target, bool announce)
 static int resume(struct target *target, int debug_execution, bool step)
 {
 	if (debug_execution) {
-		LOG_ERROR("TODO: debug_execution is true");
-		return ERROR_FAIL;
+		LOG_WARNING("TODO: debug_execution is true");
 	}
 
 	return execute_resume(target, step);
