@@ -6169,6 +6169,17 @@ flash bank $_FLASHNAME fespi 0x20000000 0 0 0 $_TARGETNAME
 @end example
 @end deffn
 
+@deffn {Flash Driver} {nuspi}
+@cindex Nuclei SPI
+@cindex nuspi
+
+Nuclei's SPI controller, used in Nuclei RISC-V fpga evaluation board and other boards.
+
+@example
+flash bank $_FLASHNAME nuspi 0x20000000 0 0 0 $_TARGETNAME
+@end example
+@end deffn
+
 @subsection Internal Flash (Microcontrollers)
 
 @deffn {Flash Driver} {aduc702x}
