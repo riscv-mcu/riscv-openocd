@@ -14,6 +14,9 @@
 #ifndef OPENOCD_HELPER_REPLACEMENTS_H
 #define OPENOCD_HELPER_REPLACEMENTS_H
 
+#define HAVE_GETTIMEOFDAY 1
+#define HAVE_USLEEP 1
+
 #include <stdint.h>
 #include <helper/system.h>
 

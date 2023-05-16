@@ -377,6 +377,21 @@ AC_ARG_ENABLE([remote-bitbang],
   AS_HELP_STRING([--enable-remote-bitbang], [Enable building support for the Remote Bitbang jtag driver]),
   [build_remote_bitbang=$enableval], [build_remote_bitbang=yes])
 
+AC_MSG_CHECKING([whether to enable ftd2xx driver])
+AS_CASE([$host_os],
+  [cygwin*|mingw*], [
+    AC_ARG_ENABLE([ftd2xx],
+      AS_HELP_STRING([--disable-ftd2xx], [Enable building support for native FTDI D2xx JTAG interface support (without libusb) on Windows.]),
+        [build_ftd2xx=$enableval], [build_ftd2xx=yes])
+
+    LDFLAGS="$LDFLAGS -l:ftd2xx.lib"
+  ],
+  [
+    AS_IF([test "x$build_ftd2xx" = "xyes"], [
+      AC_MSG_ERROR([ftd2xx is only available on Windows])
+    ])
+])
+
 AS_CASE(["${host_cpu}"],
   [i?86|x86*], [],
   [
