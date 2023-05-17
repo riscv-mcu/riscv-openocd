@@ -267,6 +267,7 @@ struct riscv_info {
 	/* The list of registers to mark as "hidden". Hidden registers are available
 	 * but do not appear in gdb targets description or reg command output. */
 	struct list_head hide_csr;
+	struct list_head expose_nuclei_cpu_core;
 
 	riscv_sample_config_t sample_config;
 	struct riscv_sample_buf sample_buf;

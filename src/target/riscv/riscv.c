@@ -493,6 +493,11 @@ static void riscv_deinit_target(struct target *target)
 		free(entry);
 	}
 
+	list_for_each_entry_safe(entry, tmp, &info->expose_nuclei_cpu_core, list) {
+		free(entry->name);
+		free(entry);
+	}
+
 	free(info->reg_names);
 	free(target->arch_info);
 
@@ -3310,6 +3315,98 @@ COMMAND_HANDLER(riscv_hide_csrs)
 	return ret;
 }
 
+uint64_t nuclei_get_dmcustom(struct target *target, uint32_t type, uint32_t hart_id, uint32_t index)
+{
+	uint64_t out_data;
+	uint32_t address, value;
+	RISCV_INFO(r);
+	if (!r) {
+		LOG_ERROR("riscv_info is NULL!");
+		return ERROR_FAIL;
+	}
+
+	if (r->dmi_write) {
+		address = 0x70;
+		value = (type << 28) | (hart_id << 8) | index;
+		if (r->dmi_write(target, address, value) != ERROR_OK)
+			return ERROR_FAIL;
+	} else {
+		LOG_ERROR("dmi_write is not implemented for this target.");
+		return ERROR_FAIL;
+	}
+
+	if (r->dmi_read) {
+		address = 0x71;
+		if (r->dmi_read(target, &value, address) != ERROR_OK)
+			return ERROR_FAIL;
+		out_data = value;
+		address = 0x72;
+		if (r->dmi_read(target, &value, address) != ERROR_OK)
+			return ERROR_FAIL;
+		out_data |= value << 32;
+		return out_data;
+	} else {
+		LOG_ERROR("dmi_read is not implemented for this target.");
+		return ERROR_FAIL;
+	}
+}
+
+COMMAND_HANDLER(nuclei_set_expose_cpu_core)
+{
+	if (CMD_ARGC == 0) {
+		LOG_ERROR("Command expects parameters");
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	struct target *target = get_current_target(CMD_CTX);
+	RISCV_INFO(info);
+	int ret = ERROR_OK;
+
+	for (unsigned int i = 0; i < CMD_ARGC; i++) {
+		ret = parse_ranges(&info->expose_nuclei_cpu_core, CMD_ARGV[i], "nuclei_cpu_core", 0xFF);
+		if (ret != ERROR_OK)
+			break;
+	}
+
+	return ret;
+}
+
+COMMAND_HANDLER(nuclei_set_examine_cpu_core)
+{
+	if (CMD_ARGC == 0) {
+		LOG_ERROR("Command expects parameters");
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	uint64_t value;
+	uint32_t halt_id = 0;
+	uint32_t index = 0;
+	struct target *target = get_current_target(CMD_CTX);
+	RISCV_INFO(r);
+	if (!r) {
+		LOG_ERROR("riscv_info is NULL!");
+		return ERROR_FAIL;
+	}
+
+	if (CMD_ARGC == 1) {
+		COMMAND_PARSE_NUMBER(uint, CMD_ARGV[0], halt_id);
+		range_list_t *entry;
+		list_for_each_entry(entry, &r->expose_nuclei_cpu_core, list) {
+			value = nuclei_get_dmcustom(target, 0, halt_id, entry->high);
+			command_print_sameline(CMD, "%u: ", entry->high);
+			command_print(CMD, "0x%016" PRIx64, value);
+		}
+	} else if (CMD_ARGC == 2) {
+		COMMAND_PARSE_NUMBER(uint, CMD_ARGV[0], halt_id);
+		COMMAND_PARSE_NUMBER(uint, CMD_ARGV[1], index);
+		value = nuclei_get_dmcustom(target, 0, halt_id, index);
+		command_print_sameline(CMD, "%u: ", index);
+		command_print(CMD, "0x%016" PRIx64, value);
+	}
+
+	return ERROR_OK;
+}
+
 COMMAND_HANDLER(riscv_authdata_read)
 {
 	unsigned int index = 0;
@@ -4168,6 +4265,22 @@ static const struct command_registration riscv_exec_command_handlers[] = {
 			"This must be executed before `init`."
 	},
 	{
+		.name = "nuclei_expose_cpu_core",
+		.handler = nuclei_set_expose_cpu_core,
+		.mode = COMMAND_CONFIG,
+		.usage = "<index0> ... <index255>",
+		.help = "Configure a list of index for `nuclei_examine_cpu_core` to expose in "
+				"This must be executed before `init`."
+	},
+	{
+		.name = "nuclei_examine_cpu_core",
+		.handler = nuclei_set_examine_cpu_core,
+		.mode = COMMAND_ANY,
+		.usage = "<hartid> [index]",
+		.help = "Return the 64-bit value read from dm-custom1 and dm-custom2 "
+				"value = dm-custom2 << 32 + dm-custom1 "
+	},
+	{
 		.name = "authdata_read",
 		.handler = riscv_authdata_read,
 		.usage = "[index]",
@@ -4437,6 +4550,7 @@ static void riscv_info_init(struct target *target, struct riscv_info *r)
 	INIT_LIST_HEAD(&r->expose_csr);
 	INIT_LIST_HEAD(&r->expose_custom);
 	INIT_LIST_HEAD(&r->hide_csr);
+	INIT_LIST_HEAD(&r->expose_nuclei_cpu_core);
 
 	r->vsew64_supported = YNM_MAYBE;
 }
