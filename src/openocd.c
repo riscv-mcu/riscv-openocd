@@ -110,7 +110,7 @@ COMMAND_HANDLER(handle_init_command)
 {
 	bool resethalt = false;
 
-	if (CMD_ARGC != 0)
+	if (CMD_ARGC > 1)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
 	if (CMD_ARGC == 1) {
