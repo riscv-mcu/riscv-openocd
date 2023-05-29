@@ -618,6 +618,12 @@ AS_IF([test "x$build_xlnx_pcie_xvc" = "xyes"], [
   AC_DEFINE([BUILD_XLNX_PCIE_XVC], [0], [0 if you don't want Xilinx XVC/PCIe driver.])
 ])
 
+AS_IF([test "x$build_ftd2xx" = "xyes"], [
+  AC_DEFINE([BUILD_FTD2XX], [1], [1 if you want the FTD2xx driver support.])
+], [
+  AC_DEFINE([BUILD_FTD2XX], [0], [0 if you don't want FTD2xx driver support.])
+])
+
 PKG_CHECK_MODULES([LIBUSB1], [libusb-1.0], [
 	use_libusb1=yes
 	AC_DEFINE([HAVE_LIBUSB1], [1], [Define if you have libusb-1.x])
@@ -770,6 +776,7 @@ AM_CONDITIONAL([USE_HIDAPI], [test "x$use_hidapi" = "xyes"])
 AM_CONDITIONAL([USE_LIBJAYLINK], [test "x$use_libjaylink" = "xyes"])
 AM_CONDITIONAL([RSHIM], [test "x$build_rshim" = "xyes"])
 AM_CONDITIONAL([HAVE_CAPSTONE], [test "x$enable_capstone" != "xno"])
+AM_CONDITIONAL([USE_FTD2XX], [test "x$build_ftd2xx" = "xyes"])
 
 AM_CONDITIONAL([INTERNAL_JIMTCL], [test "x$use_internal_jimtcl" = "xyes"])
 AM_CONDITIONAL([INTERNAL_LIBJAYLINK], [test "x$use_internal_libjaylink" = "xyes"])
@@ -862,3 +869,7 @@ m4_foreach([adapter], [USB1_ADAPTERS,
 	])
 ])
 echo
+
+AS_IF([test "x$build_ftd2xx" = "xyes"], [
+  echo "FTD2xx driver support enabled."
+])
