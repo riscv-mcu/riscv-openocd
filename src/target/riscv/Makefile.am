@@ -6,11 +6,13 @@ noinst_LTLIBRARIES += %D%/libriscv.la
        %D%/batch.h \
        %D%/debug_defines.h \
        %D%/encoding.h \
+       %D%/etrace.h \
        %D%/gdb_regs.h \
        %D%/opcodes.h \
        %D%/program.h \
        %D%/riscv.h \
        %D%/batch.c \
+       %D%/etrace.c \
        %D%/program.c \
        %D%/riscv-011.c \
        %D%/riscv-013.c \
