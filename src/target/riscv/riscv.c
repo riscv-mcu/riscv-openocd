@@ -4168,6 +4168,293 @@ COMMAND_HANDLER(riscv_exec_progbuf)
 	return ERROR_OK;
 }
 
+#define KB                        (1024)
+#define MB                        (KB * 1024)
+#define GB                        (MB * 1024)
+#define EXTENSION_NUM             (26)
+#define POWER_FOR_TWO(n)          (1 << n)
+#define EXTRACT_FIELD(val, which) (((val) & (which)) / ((which) & ~((which)-1)))
+#define print_size(bytes) do {\
+    if (bytes / GB) {\
+        command_print_sameline(CMD, " %ldGB", bytes / GB);\
+    } else if (bytes / MB) {\
+        command_print_sameline(CMD, " %ldMB", bytes / MB);\
+    } else if (bytes / KB) {\
+        command_print_sameline(CMD, " %ldKB", bytes / KB);\
+    } else {\
+        command_print_sameline(CMD, " %ldByte", bytes);\
+    }\
+} while(0);
+#define show_cache_info(set, way, lsize) do {\
+    print_size(set * way * lsize);\
+    command_print_sameline(CMD, "(set=%ld,", set);\
+    command_print_sameline(CMD, "way=%ld,", way);\
+    command_print(CMD, "lsize=%ld)", lsize);\
+} while(0);
+
+COMMAND_HANDLER(handle_nuclei_cpuinfo)
+{
+    riscv_reg_t csr_mcfg = 0;
+    riscv_reg_t csr_micfg = 0;
+    riscv_reg_t csr_mdcfg = 0;
+    riscv_reg_t iregion_base = 0;
+    riscv_reg_t csr_marchid = 0;
+    riscv_reg_t csr_mimpid = 0;
+    riscv_reg_t csr_misa = 0;
+    riscv_reg_t csr_mirgb = 0;
+    riscv_reg_t csr_mfiocfg = 0;
+    riscv_reg_t csr_mppicfg = 0;
+    riscv_reg_t csr_mtlbcfg = 0;
+
+    struct target *target = get_current_target(CMD_CTX);
+
+    command_print(CMD, "----Supported configuration information");
+
+    /* ID and version */
+    riscv_get_register(target, &csr_marchid, CSR_MARCHID + GDB_REGNO_CSR0);
+    riscv_get_register(target, &csr_mimpid, CSR_MIMPID + GDB_REGNO_CSR0);
+    command_print(CMD, "         MARCHID: %lx", csr_marchid);
+    command_print(CMD, "          MIMPID: %lx", csr_mimpid);
+
+    /* ISA */
+    riscv_get_register(target, &csr_misa, CSR_MISA + GDB_REGNO_CSR0);
+    command_print_sameline(CMD, "             ISA:");
+    if (32 == riscv_xlen(target)) {
+        command_print_sameline(CMD, " RV32");
+    } else {
+        command_print_sameline(CMD, " RV64");
+    }
+    for (int i = 0; i < EXTENSION_NUM; i++) {
+        if (csr_misa & BIT(i)) {
+            if ('X' == ('A' + i)) {
+                command_print_sameline(CMD, " Zc XLCZ");
+            } else {
+                command_print_sameline(CMD, " %c", 'A' + i);
+            }
+        }
+    }
+    command_print(CMD, " ");
+
+    /* Support */
+    riscv_get_register(target, &csr_mcfg, CSR_MCFG_INFO + GDB_REGNO_CSR0);
+    command_print_sameline(CMD, "            MCFG:");
+    if (csr_mcfg & BIT(0)) {
+        command_print_sameline(CMD, " TEE");
+    }
+    if (csr_mcfg & BIT(1)) {
+        command_print_sameline(CMD, " ECC");
+    }
+    if (csr_mcfg & BIT(2)) {
+        command_print_sameline(CMD, " ECLIC");
+    }
+    if (csr_mcfg & BIT(3)) {
+        command_print_sameline(CMD, " PLIC");
+    }
+    if (csr_mcfg & BIT(4)) {
+        command_print_sameline(CMD, " FIO");
+    }
+    if (csr_mcfg & BIT(5)) {
+        command_print_sameline(CMD, " PPI");
+    }
+    if (csr_mcfg & BIT(6)) {
+        command_print_sameline(CMD, " NICE");
+    }
+    if (csr_mcfg & BIT(7)) {
+        command_print_sameline(CMD, " ILM");
+    }
+    if (csr_mcfg & BIT(8)) {
+        command_print_sameline(CMD, " DLM");
+    }
+    if (csr_mcfg & BIT(9)) {
+        command_print_sameline(CMD, " ICACHE");
+    }
+    if (csr_mcfg & BIT(10)) {
+        command_print_sameline(CMD, " DCACHE");
+    }
+    if (csr_mcfg & BIT(11)) {
+        command_print_sameline(CMD, " SMP");
+    }
+    if (csr_mcfg & BIT(12)) {
+        command_print_sameline(CMD, " DSP-N1");
+    }
+    if (csr_mcfg & BIT(13)) {
+        command_print_sameline(CMD, " DSP-N2");
+    }
+    if (csr_mcfg & BIT(14)) {
+        command_print_sameline(CMD, " DSP-N3");
+    }
+    if (csr_mcfg & BIT(16)) {
+        command_print_sameline(CMD, " IREGION");
+    }
+	if (csr_mcfg & BIT(20)) {
+        command_print_sameline(CMD, " ETRACE");
+    }
+    command_print(CMD, " ");
+
+    /* ILM */
+    if (csr_mcfg & BIT(7)) {
+        riscv_get_register(target, &csr_micfg, CSR_MICFG_INFO + GDB_REGNO_CSR0);
+        command_print_sameline(CMD, "             ILM:");
+        print_size(POWER_FOR_TWO(EXTRACT_FIELD(csr_micfg, 0x1F << 16) - 1) * 256);
+        if (csr_micfg & BIT(21)) {
+            command_print_sameline(CMD, " execute-only");
+        }
+        if (csr_micfg & BIT(22)) {
+            command_print_sameline(CMD, " has-ecc");
+        }
+        command_print(CMD, " ");
+    }
+
+    /* DLM */
+    if (csr_mcfg & BIT(8)) {
+        riscv_get_register(target, &csr_mdcfg, CSR_MDCFG_INFO + GDB_REGNO_CSR0);
+        command_print_sameline(CMD, "             DLM:");
+        print_size(POWER_FOR_TWO(EXTRACT_FIELD(csr_mdcfg, 0x1F << 16) - 1) * 256);
+        if (csr_mdcfg & BIT(21)) {
+            command_print_sameline(CMD, " has-ecc");
+        }
+        command_print(CMD, " ");
+    }
+
+    /* ICACHE */
+    if (csr_mcfg & BIT(9)) {
+        riscv_get_register(target, &csr_micfg, CSR_MICFG_INFO + GDB_REGNO_CSR0);
+        command_print_sameline(CMD, "          ICACHE:");
+        show_cache_info(POWER_FOR_TWO(EXTRACT_FIELD(csr_micfg, 0xF) +3), 
+                        EXTRACT_FIELD(csr_micfg, 0x7 << 4) + 1, 
+                        POWER_FOR_TWO(EXTRACT_FIELD(csr_micfg, 0x7 << 7) + 2));
+    }
+
+    /* DCACHE */
+    if (csr_mcfg & BIT(10)) {
+        riscv_get_register(target, &csr_mdcfg, CSR_MDCFG_INFO + GDB_REGNO_CSR0);
+        command_print_sameline(CMD, "          DCACHE:");
+        show_cache_info(POWER_FOR_TWO(EXTRACT_FIELD(csr_mdcfg, 0xF) +3), 
+                        EXTRACT_FIELD(csr_mdcfg, 0x7 << 4) + 1, 
+                        POWER_FOR_TWO(EXTRACT_FIELD(csr_mdcfg, 0x7 << 7) + 2));
+    }
+
+    /* IREGION */
+    if (csr_mcfg & BIT(16)) {
+        riscv_get_register(target, &csr_mirgb, CSR_MIRGB_INFO + GDB_REGNO_CSR0);
+        command_print_sameline(CMD, "         IREGION:");
+        iregion_base = csr_mirgb & (~0x3FF);
+        command_print_sameline(CMD, " %#lx", iregion_base);
+        print_size(POWER_FOR_TWO(EXTRACT_FIELD(csr_mirgb, 0xF << 1) - 1) * KB);
+        command_print(CMD, " ");
+        command_print(CMD, "                  Unit        Size        Address");
+        command_print(CMD, "                  INFO        64KB        %#lx", iregion_base);
+        command_print(CMD, "                  DEBUG       64KB        %#lx", iregion_base + 0x10000);
+        if (csr_mcfg & BIT(2)) {
+            command_print(CMD, "                  ECLIC       64KB        %#lx", iregion_base + 0x20000);
+        }
+        command_print(CMD, "                  TIMER       64KB        %#lx", iregion_base + 0x30000);
+        if (csr_mcfg & BIT(11)) {
+            command_print(CMD, "                  SMP&CC      64KB        %#lx", iregion_base + 0x40000);
+        }
+        riscv_reg_t smp_cfg = 0;
+        riscv_read_memory(target, iregion_base + 0x40004, 4, 1, &smp_cfg);
+        if ((csr_mcfg & BIT(2)) && (EXTRACT_FIELD(smp_cfg, 0x1F << 1) >= 2)) {
+            command_print(CMD, "                  CIDU        64KB        %#lx", iregion_base + 0x50000);
+        }
+        if (csr_mcfg & BIT(3)) {
+            command_print(CMD, "                  PLIC        64MB        %#lx", iregion_base + 0x4000000);
+        }
+        /* SMP */
+        if (csr_mcfg & BIT(11)) {
+            command_print_sameline(CMD, "         SMP_CFG:");
+            command_print_sameline(CMD, " CC_PRESENT=%ld", EXTRACT_FIELD(smp_cfg, 0x1));
+            command_print_sameline(CMD, " SMP_CORE_NUM=%ld", EXTRACT_FIELD(smp_cfg, 0x1F << 1));
+            command_print_sameline(CMD, " IOCP_NUM=%ld", EXTRACT_FIELD(smp_cfg, 0x3F << 7));
+            command_print(CMD, " PMON_NUM=%ld", EXTRACT_FIELD(smp_cfg, 0x3F << 13));
+        }
+        /* L2CACHE */
+        if (smp_cfg & 0x1) {
+            command_print_sameline(CMD, "         L2CACHE:");
+            riscv_reg_t cc_cfg = 0;
+            riscv_read_memory(target, iregion_base + 0x40008, 4, 1, &cc_cfg);
+            show_cache_info(POWER_FOR_TWO(EXTRACT_FIELD(smp_cfg, 0xF)), EXTRACT_FIELD(smp_cfg, 0x7 << 4) + 1, 
+                            POWER_FOR_TWO(EXTRACT_FIELD(smp_cfg, 0x7 << 7) + 2));
+        }
+        /* INFO */
+        command_print(CMD, "     INFO-Detail:");
+        riscv_reg_t mpasize = 0;
+        riscv_read_memory(target, iregion_base, 4, 1, &mpasize);
+        command_print(CMD, "                  mpasize : %ld", mpasize);
+        riscv_reg_t cmo_info = 0;
+        riscv_read_memory(target, iregion_base + 4, 4, 1, &cmo_info);
+        if (cmo_info & 0x1) {
+            command_print(CMD, "                  cbozero : %ldByte", POWER_FOR_TWO(EXTRACT_FIELD(cmo_info, 0xF << 6) + 2));
+            command_print(CMD, "                  cmo     : %ldByte", POWER_FOR_TWO(EXTRACT_FIELD(cmo_info, 0xF << 2) + 2));
+            if (cmo_info & 0x2) {
+                command_print(CMD, "                  has_prefecth");
+            }
+        }
+        riscv_reg_t mcppi_cfg_lo = 0;
+        riscv_read_memory(target, iregion_base + 0x80, 4, 1, &mcppi_cfg_lo);
+        riscv_reg_t mcppi_cfg_hi = 0;
+        riscv_read_memory(target, iregion_base + 0x84, 4, 1, &mcppi_cfg_hi);
+        if (mcppi_cfg_lo & 0x1) {
+            if (32 == riscv_xlen(target)) {
+                command_print_sameline(CMD, "                  cppi    : %#lx", mcppi_cfg_lo & (~0x3FF));
+            } else {
+                command_print_sameline(CMD, "                  cppi    : %#lx", (mcppi_cfg_hi << 32) | (mcppi_cfg_lo & (~0x3FF)));
+            }
+            print_size(POWER_FOR_TWO(EXTRACT_FIELD(mcppi_cfg_lo, 0xF << 1) - 1) * KB);
+            command_print(CMD, " ");
+        }
+    }
+
+    /* TLB */
+    if (csr_mcfg & BIT(3)) {
+        riscv_get_register(target, &csr_mtlbcfg, CSR_MTLBCFG_INFO + GDB_REGNO_CSR0);
+        if (csr_mtlbcfg != -1) {
+            command_print(CMD, "            DTLB: %ld entry", EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 19));
+            command_print(CMD, "            ITLB: %ld entry", EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 16));
+            command_print_sameline(CMD, "            MTLB:");
+            command_print_sameline(CMD, " %ld entry", POWER_FOR_TWO(EXTRACT_FIELD(csr_mtlbcfg, 0xF) + 3) * 
+                                                      (EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 4) + 1) * 
+                                                      (EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 7) - 1));
+            if (csr_mtlbcfg & BIT(10)) {
+                command_print_sameline(CMD, " has_ecc");
+            }
+            command_print(CMD, " ");
+        }
+    }
+
+    /* FIO */
+    if (csr_mcfg & BIT(4)) {
+        riscv_get_register(target, &csr_mfiocfg, CSR_MFIOCFG_INFO + GDB_REGNO_CSR0);
+        command_print_sameline(CMD, "             FIO:");
+        command_print_sameline(CMD, " %#lx", csr_mfiocfg & (~0x3FF));
+        print_size(POWER_FOR_TWO(EXTRACT_FIELD(csr_mfiocfg, 0xF << 1) - 1) * KB);
+        command_print(CMD, " ");
+    }
+
+    /* PPI */
+    if (csr_mcfg & BIT(5)) {
+        riscv_get_register(target, &csr_mppicfg, CSR_MPPICFG_INFO + GDB_REGNO_CSR0);
+        command_print_sameline(CMD, "             PPI:");
+        command_print_sameline(CMD, " %#lx", csr_mppicfg & (~0x3FF));
+        print_size(POWER_FOR_TWO(EXTRACT_FIELD(csr_mppicfg, 0xF << 1) - 1) * KB);
+        command_print(CMD, " ");
+    }
+
+    command_print(CMD, "----End of cpuinfo");
+    return ERROR_OK;
+}
+
+static const struct command_registration nuclei_command_handlers[] = {
+	{
+		.name = "cpuinfo",
+		.handler = handle_nuclei_cpuinfo,
+		.mode = COMMAND_ANY,
+		.usage = "",
+		.help = "Displays some information about the target"
+	},
+	COMMAND_REGISTRATION_DONE
+};
+
 static const struct command_registration riscv_exec_command_handlers[] = {
 	{
 		.name = "dump_sample_buf",
@@ -4423,6 +4710,13 @@ static const struct command_registration riscv_exec_command_handlers[] = {
 		.usage = "instr1 [instr2 [... instr16]]",
 		.help = "Execute a sequence of 32-bit instructions using the program buffer. "
 			"The final ebreak instruction is added automatically, if needed."
+	},
+	{
+		.name = "nuclei",
+		.mode = COMMAND_ANY,
+		.chain = nuclei_command_handlers,
+		.usage = "",
+		.help = "Nuclei Command Group"
 	},
 	COMMAND_REGISTRATION_DONE
 };
