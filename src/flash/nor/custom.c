@@ -44,6 +44,7 @@ struct flash_bank_msg {
 	uint32_t param_0;
 	uint32_t param_1;
 	bool simulation;
+	uint32_t sectorsize;
 };
 
 static int custom_run_algorithm(struct flash_bank *bank)
@@ -287,7 +288,7 @@ FLASH_BANK_COMMAND_HANDLER(custom_flash_bank_command)
 
 	if (CMD_ARGC < 8) {
 		LOG_ERROR("Parameter error:");
-		LOG_ERROR("flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10014000 ~/work/riscv.bin [simulation]");
+		LOG_ERROR("flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10014000 ~/work/riscv.bin [simulation] [sectorsize=]");
 		return ERROR_COMMAND_SYNTAX_ERROR;
 	}
 
@@ -316,10 +317,15 @@ FLASH_BANK_COMMAND_HANDLER(custom_flash_bank_command)
 			*p = '/';
 	}
 	bank_msg->simulation = false;
-	if (CMD_ARGC >= 9) {
-		if(strcmp(CMD_ARGV[8], "simulation") == 0) {
+	bank_msg->sectorsize = 0;
+	for (int i = 8; i < CMD_ARGC; i++) {
+		if(strcmp(CMD_ARGV[i], "simulation") == 0) {
 			bank_msg->simulation = true;
 			LOG_DEBUG("Custom Simulation Mode");
+		}
+		if(strncmp(CMD_ARGV[i], "sectorsize=", strlen("sectorsize=")) == 0) {
+			COMMAND_PARSE_NUMBER(u32, CMD_ARGV[i]+strlen("sectorsize="), bank_msg->sectorsize);
+			LOG_DEBUG("Custom flash sectorsize is %x", bank_msg->sectorsize);
 		}
 	}
 
@@ -334,7 +340,7 @@ static int custom_erase(struct flash_bank *bank, unsigned int first,
 	bank_msg->cs = ERASE_CMD;
 	bank_msg->buffer = NULL;
 	bank_msg->param_0 = bank->sectors[first].offset;
-	bank_msg->param_1 = bank->sectors[last].offset + bank_msg->dev->sectorsize;
+	bank_msg->param_1 = bank->sectors[last].offset + bank_msg->sectorsize;
 
 	return custom_run_algorithm(bank);
 }
@@ -371,7 +377,6 @@ static int custom_probe(struct flash_bank *bank)
 
 	uint32_t id = 0x12345678;
 	struct flash_sector *sectors;
-	uint32_t sectorsize;
 
 	if (bank_msg->probed)
 		free(bank->sectors);
@@ -387,18 +392,20 @@ static int custom_probe(struct flash_bank *bank)
 	/* Set correct size value */
 	bank->size = bank_msg->dev->size_in_bytes;
 	/* if no sectors, treat whole bank as single sector */
-	sectorsize = bank_msg->dev->sectorsize ?
+	if (0 == bank_msg->sectorsize) {
+		bank_msg->sectorsize = bank_msg->dev->sectorsize ?
 		bank_msg->dev->sectorsize : bank_msg->dev->size_in_bytes;
+	}
 	/* create and fill sectors array */
-	bank->num_sectors = bank_msg->dev->size_in_bytes / sectorsize;
+	bank->num_sectors = bank_msg->dev->size_in_bytes / bank_msg->sectorsize;
 	sectors = malloc(sizeof(struct flash_sector) * bank->num_sectors);
 	if (sectors == NULL) {
 		LOG_ERROR("not enough memory");
 		return ERROR_FAIL;
 	}
 	for (unsigned int sector = 0; sector < bank->num_sectors; sector++) {
-		sectors[sector].offset = sector * sectorsize;
-		sectors[sector].size = sectorsize;
+		sectors[sector].offset = sector * bank_msg->sectorsize;
+		sectors[sector].size = bank_msg->sectorsize;
 		sectors[sector].is_erased = -1;
 		sectors[sector].is_protected = 0;
 	}
