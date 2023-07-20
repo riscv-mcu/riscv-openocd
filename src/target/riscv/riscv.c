@@ -4453,6 +4453,9 @@ static const struct command_registration nuclei_command_handlers[] = {
 		.usage = "",
 		.help = "Displays some information about the target"
 	},
+	{
+		.chain = etrace_command_group_handlers
+	},
 	COMMAND_REGISTRATION_DONE
 };
 
@@ -4712,13 +4715,6 @@ static const struct command_registration riscv_exec_command_handlers[] = {
 		.help = "Execute a sequence of 32-bit instructions using the program buffer. "
 			"The final ebreak instruction is added automatically, if needed."
 	},
-	{
-		.name = "nuclei",
-		.mode = COMMAND_ANY,
-		.chain = nuclei_command_handlers,
-		.usage = "",
-		.help = "Nuclei Command Group"
-	},
 	COMMAND_REGISTRATION_DONE
 };
 
@@ -4750,6 +4746,13 @@ static const struct command_registration riscv_command_handlers[] = {
 		.help = "ARM Command Group",
 		.usage = "",
 		.chain = semihosting_common_handlers
+	},
+	{
+		.name = "nuclei",
+		.mode = COMMAND_ANY,
+		.help = "Nuclei Command Group",
+		.usage = "",
+		.chain = nuclei_command_handlers
 	},
 	COMMAND_REGISTRATION_DONE
 };
