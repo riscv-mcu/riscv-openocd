@@ -445,10 +445,12 @@ int rtos_thread_packet(struct connection *connection, char const *packet, int pa
 				}
 			}
 		}
-		if (found != -1)
+		if (found != -1) {
+			target->current_targetid = found;
 			gdb_put_packet(connection, "OK", 2);	/* thread alive */
-		else
+		} else {
 			gdb_put_packet(connection, "E01", 3);	/* thread not found */
+		}
 		return ERROR_OK;
 	} else if (packet[0] == 'H') {	/* Set current thread ( 'c' for step and continue, 'g' for
 					 * all other operations ) */

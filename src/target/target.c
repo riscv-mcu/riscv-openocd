@@ -6250,6 +6250,7 @@ static int target_create(struct jim_getopt_info *goi)
 
 	/* default to first core, override with -coreid */
 	target->coreid = 0;
+	target->current_targetid = 0;
 
 	target->working_area        = 0x0;
 	target->working_area_size   = 0x0;

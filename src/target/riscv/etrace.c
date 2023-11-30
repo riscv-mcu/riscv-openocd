@@ -14,6 +14,7 @@
 #include "helper/fileio.h"
 #include "helper/time_support.h"
 #include "riscv.h"
+#include "rtos/rtos.h"
 #include "debug_defines.h"
 
 #define get_field(reg, mask) (((reg) & (mask)) / ((mask) & ~((mask) << 1)))
@@ -112,21 +113,22 @@ COMMAND_HANDLER(handle_etrace_enable_command)
 	}
 
 	struct target *target = get_current_target(CMD_CTX);
+	struct target *target_real = get_target_by_num(target->current_targetid);
 
 	riscv_reg_t dpc_rb;
-	riscv_reg_t tdata1 = 	field_value(CSR_MCONTROL_TYPE(riscv_xlen(target)), CSR_TDATA1_TYPE_MCONTROL) |
+	riscv_reg_t tdata1 = 	field_value(CSR_MCONTROL_TYPE(riscv_xlen(target_real)), CSR_TDATA1_TYPE_MCONTROL) |
 							field_value(CSR_MCONTROL_ACTION, CSR_MCONTROL_ACTION_TRACE_ON) |
 							field_value(CSR_MCONTROL_M, 1) |
 							field_value(CSR_MCONTROL_S, 1) |
 							field_value(CSR_MCONTROL_U, 1) |
 							field_value(CSR_MCONTROL_EXECUTE, 1);
-	if (riscv_set_register(target, GDB_REGNO_TSELECT, 0) != ERROR_OK)
+	if (riscv_set_register(target_real, GDB_REGNO_TSELECT, 0) != ERROR_OK)
 		return ERROR_FAIL;
-	if (riscv_set_register(target, GDB_REGNO_TDATA1, tdata1) != ERROR_OK)
+	if (riscv_set_register(target_real, GDB_REGNO_TDATA1, tdata1) != ERROR_OK)
 		return ERROR_FAIL;
-	if (riscv_get_register(target, &dpc_rb, GDB_REGNO_DPC) != ERROR_OK)
+	if (riscv_get_register(target_real, &dpc_rb, GDB_REGNO_DPC) != ERROR_OK)
 		return ERROR_FAIL;
-	if (riscv_set_register(target, GDB_REGNO_TDATA2, dpc_rb) != ERROR_OK)
+	if (riscv_set_register(target_real, GDB_REGNO_TDATA2, dpc_rb) != ERROR_OK)
 		return ERROR_FAIL;
 
 	return ERROR_OK;
@@ -139,21 +141,22 @@ COMMAND_HANDLER(handle_etrace_disable_command)
 	}
 
 	struct target *target = get_current_target(CMD_CTX);
+	struct target *target_real = get_target_by_num(target->current_targetid);
 
 	riscv_reg_t dpc_rb;
-	riscv_reg_t tdata1 = 	field_value(CSR_MCONTROL_TYPE(riscv_xlen(target)), CSR_TDATA1_TYPE_MCONTROL) |
+	riscv_reg_t tdata1 = 	field_value(CSR_MCONTROL_TYPE(riscv_xlen(target_real)), CSR_TDATA1_TYPE_MCONTROL) |
 							field_value(CSR_MCONTROL_ACTION, CSR_MCONTROL_ACTION_TRACE_OFF) |
 							field_value(CSR_MCONTROL_M, 1) |
 							field_value(CSR_MCONTROL_S, 1) |
 							field_value(CSR_MCONTROL_U, 1) |
 							field_value(CSR_MCONTROL_EXECUTE, 1);
-	if (riscv_set_register(target, GDB_REGNO_TSELECT, 1) != ERROR_OK)
+	if (riscv_set_register(target_real, GDB_REGNO_TSELECT, 1) != ERROR_OK)
 		return ERROR_FAIL;
-	if (riscv_set_register(target, GDB_REGNO_TDATA1, tdata1) != ERROR_OK)
+	if (riscv_set_register(target_real, GDB_REGNO_TDATA1, tdata1) != ERROR_OK)
 		return ERROR_FAIL;
-	if (riscv_get_register(target, &dpc_rb, GDB_REGNO_DPC) != ERROR_OK)
+	if (riscv_get_register(target_real, &dpc_rb, GDB_REGNO_DPC) != ERROR_OK)
 		return ERROR_FAIL;
-	if (riscv_set_register(target, GDB_REGNO_TDATA2, dpc_rb) != ERROR_OK)
+	if (riscv_set_register(target_real, GDB_REGNO_TDATA2, dpc_rb) != ERROR_OK)
 		return ERROR_FAIL;
 
 	return ERROR_OK;

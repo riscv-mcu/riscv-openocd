@@ -220,6 +220,7 @@ struct target {
 	/* The semihosting information, extracted from the target. */
 	struct semihosting *semihosting;
 	bool resethalt_during_init;
+	int64_t current_targetid;
 };
 
 struct target_list {
