@@ -11436,19 +11436,19 @@ Here are some examples for custom:
 # Without the simulation parameter, the flash operation will have a
 # timeout, the value of which is automatically calculated according
 # to the size of the operation data volume.
-flash bank $FLASHNAME nuspi 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
+flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
 /home/admin/flashloader.bin
 
 # If the simulation parameter is present, the flash operation will no
 # longer time out. if the sectorsize parameter is not specified,
 # then sectorsize is 0x10000.
-flash bank $FLASHNAME nuspi 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
+flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
 /home/admin/flashloader.bin simulation
 
-flash bank $FLASHNAME nuspi 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
+flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
 /home/admin/flashloader.bin sectorsize=0x1000
 
-flash bank $FLASHNAME nuspi 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
+flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
 /home/admin/flashloader.bin simulation sectorsize=0x1000
 
 flash bank $FLASHNAME nuspi 0x20000000 0 0 0 $TARGETNAME 0x10180000 \
