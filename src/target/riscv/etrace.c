@@ -113,7 +113,12 @@ COMMAND_HANDLER(handle_etrace_enable_command)
 	}
 
 	struct target *target = get_current_target(CMD_CTX);
-	struct target *target_real = get_target_by_num(target->current_targetid);
+	struct target *target_real;
+	if (target->smp) {
+		target_real = get_target_by_num(target->current_targetid);
+	} else {
+		target_real = target;
+	}
 
 	riscv_reg_t dpc_rb;
 	riscv_reg_t tdata1 = 	field_value(CSR_MCONTROL_TYPE(riscv_xlen(target_real)), CSR_TDATA1_TYPE_MCONTROL) |
@@ -141,7 +146,12 @@ COMMAND_HANDLER(handle_etrace_disable_command)
 	}
 
 	struct target *target = get_current_target(CMD_CTX);
-	struct target *target_real = get_target_by_num(target->current_targetid);
+	struct target *target_real;
+	if (target->smp) {
+		target_real = get_target_by_num(target->current_targetid);
+	} else {
+		target_real = target;
+	}
 
 	riscv_reg_t dpc_rb;
 	riscv_reg_t tdata1 = 	field_value(CSR_MCONTROL_TYPE(riscv_xlen(target_real)), CSR_TDATA1_TYPE_MCONTROL) |
