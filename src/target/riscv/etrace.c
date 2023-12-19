@@ -39,9 +39,10 @@
 #define ETRACE_WRAP			(0x3c)
 #define ETRACE_COMPACT 		(0x40)
 
-static uint32_t etrace_addr;
-static target_addr_t buffer_addr;
-static uint32_t buffer_size;
+static uint32_t etrace_addr = 0;
+static target_addr_t buffer_addr = 0;
+static uint32_t buffer_size = 0;
+static uint8_t etrace_start = 0;
 
 static int etrace_read_reg(struct target *target, uint32_t offset, uint32_t *value)
 {
@@ -83,6 +84,11 @@ COMMAND_HANDLER(handle_etrace_config_command)
 
 	if (CMD_ARGC != 4) {
 		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	if (etrace_start) {
+		LOG_ERROR("config must come before start");
+		return 0;
 	}
 
 	struct target *target = get_current_target(CMD_CTX);
@@ -181,6 +187,7 @@ COMMAND_HANDLER(handle_etrace_start_command)
 	struct target *target = get_current_target(CMD_CTX);
 
 	etrace_write_reg(target, ETRACE_ENA, 1);
+	etrace_start = 1;
 
 	return ERROR_OK;
 }
@@ -194,6 +201,7 @@ COMMAND_HANDLER(handle_etrace_stop_command)
 	struct target *target = get_current_target(CMD_CTX);
 
 	etrace_stop(target);
+	etrace_start = 0;
 
 	return ERROR_OK;
 }
@@ -211,6 +219,11 @@ COMMAND_HANDLER(handle_etrace_dump_command)
 
 	if (CMD_ARGC != 1) {
 		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	if (etrace_start) {
+		LOG_ERROR("you must stop before dumping");
+		return 0;
 	}
 
 	struct target *target = get_current_target(CMD_CTX);
