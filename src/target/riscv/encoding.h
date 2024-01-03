@@ -3182,6 +3182,15 @@
 #define CSR_MTLBCFG_INFO 0xfc3
 #define CSR_MECC_CTRL 0xbc0
 #define CSR_MECC_STATUS 0xbc4
+#define CSR_IRQCIP 0xbd0
+#define CSR_IRQCIE 0xbd1
+#define CSR_IRQCLVL 0xbd2
+#define CSR_IRQCEDGE 0xbd3
+#define CSR_IRQCINFO 0xbd4
+#define CSR_MSIP 0xbd8
+#define CSR_MTIMECMP 0xbd9
+#define CSR_MTIME 0xbda
+#define CSR_MSTOP 0xbdb
 
 /* === P-Extension Registers === */
 #define CSR_UCODE 0x801
@@ -5004,6 +5013,15 @@ DECLARE_CSR(mcfg_info, CSR_MCFG_INFO)
 DECLARE_CSR(mtlbcfg_info, CSR_MTLBCFG_INFO)
 DECLARE_CSR(mecc_ctrl, CSR_MECC_CTRL)
 DECLARE_CSR(mecc_status, CSR_MECC_STATUS)
+DECLARE_CSR(irqcip, CSR_IRQCIP)
+DECLARE_CSR(irqcie, CSR_IRQCIE)
+DECLARE_CSR(irqclvl, CSR_IRQCLVL)
+DECLARE_CSR(irqcedge, CSR_IRQCEDGE)
+DECLARE_CSR(irqcinfo, CSR_IRQCINFO)
+DECLARE_CSR(msip, CSR_MSIP)
+DECLARE_CSR(mtimecmp, CSR_MTIMECMP)
+DECLARE_CSR(mtime, CSR_MTIME)
+DECLARE_CSR(mstop, CSR_MSTOP)
 
 /* === P-Extension Registers === */
 DECLARE_CSR(ucode, CSR_UCODE)
