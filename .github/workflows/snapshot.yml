@@ -18,7 +18,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install autotools-dev autoconf automake libtool pkg-config cmake texinfo texlive g++-mingw-w64-i686
       - name: Checkout Code
-        uses: actions/checkout@v1
+        uses: actions/checkout@v3
       - run: ./bootstrap
       - name: Prepare libusb1
         env:
@@ -68,7 +68,7 @@ jobs:
           # set env and call cross-build.sh
           export OPENOCD_TAG=$OPENOCD_TAG
           export OPENOCD_SRC=$PWD
-          export OPENOCD_CONFIG=""
+          export OPENOCD_CONFIG="--disable-werror"
           mkdir -p $BUILD_DIR &&  cd $BUILD_DIR
           bash $OPENOCD_SRC/contrib/cross-build.sh $HOST
           # add missing dlls
