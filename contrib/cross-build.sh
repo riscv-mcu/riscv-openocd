@@ -40,12 +40,14 @@ WORK_DIR=$PWD
 : ${HIDAPI_SRC:=/path/to/hidapi}
 : ${LIBFTDI_SRC:=/path/to/libftdi}
 : ${CAPSTONE_SRC:=/path/to/capstone}
+: ${FTD2XX_SRC:=/path/to/ftd2xx}
 
 OPENOCD_SRC=`readlink -m $OPENOCD_SRC`
 LIBUSB1_SRC=`readlink -m $LIBUSB1_SRC`
 HIDAPI_SRC=`readlink -m $HIDAPI_SRC`
 LIBFTDI_SRC=`readlink -m $LIBFTDI_SRC`
 CAPSTONE_SRC=`readlink -m $CAPSTONE_SRC`
+FTD2XX_SRC=`readlink -m $FTD2XX_SRC`
 
 HOST_TRIPLET=$1
 BUILD_DIR=$WORK_DIR/$HOST_TRIPLET-build
@@ -151,6 +153,14 @@ libdir=${exec_prefix}/lib \
 includedir=${prefix}/include\n\n;' $CAPSTONE_PC_FILE
 fi
 
+# ftd2xx copy to sysroot
+if [ -d $FTD2XX_SRC ] ; then
+    FTD2XX_LIB_SRC=${FTD2XX_SRC}/Static/amd64/
+    if [[ "$HOST_TRIPLET" == *"w32"* ]] ; then
+        FTD2XX_LIB_SRC=${FTD2XX_SRC}/Static/i686/
+    fi
+    cp -f ${FTD2XX_LIB_SRC}/* $SYSROOT/lib/
+fi
 
 # OpenOCD build & install into sysroot
 mkdir -p $OPENOCD_BUILD_DIR
