@@ -155,9 +155,9 @@ fi
 
 # ftd2xx copy to sysroot
 if [ -d $FTD2XX_SRC ] ; then
-    FTD2XX_LIB_SRC=${FTD2XX_SRC}/Static/amd64
+    FTD2XX_LIB_SRC=${FTD2XX_SRC}/amd64
     if [[ "$HOST_TRIPLET" == *"w32"* ]] ; then
-        FTD2XX_LIB_SRC=${FTD2XX_SRC}/Static/i386
+        FTD2XX_LIB_SRC=${FTD2XX_SRC}/i386
     fi
     cp -f ${FTD2XX_LIB_SRC}/* $SYSROOT/usr/lib/
 fi
