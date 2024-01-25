@@ -11,13 +11,13 @@ jobs:
       CC: clang
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Install required packages (apt-get)
         run: |
           sudo apt-get update
           sudo apt-get install clang gcc-multilib
       - run: ./bootstrap
-      - run: ./configure --enable-remote-bitbang --enable-jtag_vpi --disable-target64
+      - run: ./configure --enable-remote-bitbang --enable-jtag_vpi --disable-target64 --disable-werror
       - run: make -j`nproc`
       - run: file src/openocd | grep 32-bit
       - run: src/openocd --version
@@ -31,13 +31,14 @@ jobs:
       CC: gcc
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Install required packages (apt-get)
         run: |
           sudo apt-get update
           sudo apt-get install libusb-1.0-0 libusb-1.0-0-dev
+          sudo apt-get install libftdi1-2 libftdi1-dev
       - run: ./bootstrap
-      - run: ./configure --enable-remote-bitbang --enable-jtag_vpi --enable-ftdi-oscan1
+      - run: ./configure --enable-remote-bitbang --enable-jtag_vpi --enable-ftdi-oscan1 --enable-jlink --enable-ftdi --disable-werror
       - run: make -j`nproc`
       - run: file src/openocd | grep 64-bit
       - run: src/openocd --version
