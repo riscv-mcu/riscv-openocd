@@ -3317,11 +3317,28 @@ COMMAND_HANDLER(handle_nuclei_cpuinfo)
     if (csr_mcfg & BIT(14)) {
         command_print_sameline(CMD, " DSP-N3");
     }
+    if (csr_mcfg & BIT(15)) {
+        command_print_sameline(CMD, " Zc-xlcz");
+    }
     if (csr_mcfg & BIT(16)) {
         command_print_sameline(CMD, " IREGION");
     }
-	if (csr_mcfg & BIT(20)) {
+    if (csr_mcfg & BIT(19)) {
+        command_print_sameline(CMD, " Smwg");
+    }
+    if (csr_mcfg & BIT(20)) {
         command_print_sameline(CMD, " ETRACE");
+    }
+    if (csr_mcfg & BIT(21)) {
+	if (csr_mcfg & BIT(22)) {
+            command_print_sameline(CMD, " ASIL-B");
+	} else {
+            command_print_sameline(CMD, " Lockstep+Split");
+	}
+    } else {
+	if (csr_mcfg & BIT(22)) {
+            command_print_sameline(CMD, " Lockstep");
+        }
     }
     command_print(CMD, " ");
 
@@ -3374,7 +3391,7 @@ COMMAND_HANDLER(handle_nuclei_cpuinfo)
         command_print_sameline(CMD, "         IREGION:");
         iregion_base = csr_mirgb & (~0x3FF);
         command_print_sameline(CMD, " %#lx", iregion_base);
-        print_size(POWER_FOR_TWO(EXTRACT_FIELD(csr_mirgb, 0xF << 1) - 1) * KB);
+	print_size(POWER_FOR_TWO(EXTRACT_FIELD(csr_mirgb, 0x1F << 1) - 1) * KB);
         command_print(CMD, " ");
         command_print(CMD, "                  Unit        Size        Address");
         command_print(CMD, "                  INFO        64KB        %#lx", iregion_base);
@@ -3398,7 +3415,7 @@ COMMAND_HANDLER(handle_nuclei_cpuinfo)
         if (csr_mcfg & BIT(11)) {
             command_print_sameline(CMD, "         SMP_CFG:");
             command_print_sameline(CMD, " CC_PRESENT=%ld", EXTRACT_FIELD(smp_cfg, 0x1));
-            command_print_sameline(CMD, " SMP_CORE_NUM=%ld", EXTRACT_FIELD(smp_cfg, 0x1F << 1));
+            command_print_sameline(CMD, " SMP_CORE_NUM=%ld", EXTRACT_FIELD(smp_cfg, 0x3F << 1) + 1);
             command_print_sameline(CMD, " IOCP_NUM=%ld", EXTRACT_FIELD(smp_cfg, 0x3F << 7));
             command_print(CMD, " PMON_NUM=%ld", EXTRACT_FIELD(smp_cfg, 0x3F << 13));
         }
@@ -3407,8 +3424,8 @@ COMMAND_HANDLER(handle_nuclei_cpuinfo)
             command_print_sameline(CMD, "         L2CACHE:");
             riscv_reg_t cc_cfg = 0;
             riscv_read_memory(target, iregion_base + 0x40008, 4, 1, (uint8_t*)&cc_cfg);
-            show_cache_info(POWER_FOR_TWO(EXTRACT_FIELD(smp_cfg, 0xF)), EXTRACT_FIELD(smp_cfg, 0x7 << 4) + 1, 
-                            POWER_FOR_TWO(EXTRACT_FIELD(smp_cfg, 0x7 << 7) + 2));
+            show_cache_info(POWER_FOR_TWO(EXTRACT_FIELD(cc_cfg, 0xF)), EXTRACT_FIELD(cc_cfg, 0xF << 4) + 1, 
+                            POWER_FOR_TWO(EXTRACT_FIELD(cc_cfg, 0x7 << 8) + 2));
         }
         /* INFO */
         command_print(CMD, "     INFO-Detail:");
@@ -3442,12 +3459,11 @@ COMMAND_HANDLER(handle_nuclei_cpuinfo)
     /* TLB */
     if (csr_mcfg & BIT(3)) {
         if (riscv_get_register(target, &csr_mtlbcfg, CSR_MTLBCFG_INFO + GDB_REGNO_CSR0) == ERROR_OK) {
-            command_print(CMD, "            DTLB: %ld entry", EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 19));
-            command_print(CMD, "            ITLB: %ld entry", EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 16));
+            command_print(CMD, "            DTLB: %ld entry", POWER_FOR_TWO(EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 19) - 1));
+            command_print(CMD, "            ITLB: %ld entry", POWER_FOR_TWO(EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 16) - 1));
             command_print_sameline(CMD, "            MTLB:");
             command_print_sameline(CMD, " %ld entry", POWER_FOR_TWO(EXTRACT_FIELD(csr_mtlbcfg, 0xF) + 3) * 
-                                                      (EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 4) + 1) * 
-                                                      (EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 7) - 1));
+                                                      (EXTRACT_FIELD(csr_mtlbcfg, 0x7 << 4) + 1));
             if (csr_mtlbcfg & BIT(10)) {
                 command_print_sameline(CMD, " has_ecc");
             }
