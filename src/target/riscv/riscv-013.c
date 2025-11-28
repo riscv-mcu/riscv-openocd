@@ -2054,6 +2054,12 @@ static int examine(struct target *target)
 	if (set_dcsr_ebreak(target, false) != ERROR_OK)
 		return ERROR_FAIL;
 
+	// Actually the target is examined successfully, but this examined is set in target.c
+	// so to workaround it, we temporarily set it to true, and reset it
+	target->examined = true;
+	nuclei_display_cpuinfo(target, NULL);
+	target->examined = false;
+
 	if (state_at_examine_start == RISCV_STATE_RUNNING) {
 		riscv013_step_or_resume_current_hart(target, false);
 		target->state = TARGET_RUNNING;

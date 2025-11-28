@@ -2324,11 +2324,6 @@ static int riscv_examine(struct target *target)
 	if (examine_status != ERROR_OK)
 		goto examine_fail;
 
-    // Actually the target is examined successfully, but this examined is set in target.c
-    // so to workaround it, we temporarily set it to true, and reset it
-	target->examined = true;
-    nuclei_display_cpuinfo(target, NULL);
-    target->examined = false;
 	return ERROR_OK;
 
 examine_fail:
