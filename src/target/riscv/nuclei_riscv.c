@@ -18,6 +18,7 @@
 #include "rtos/rtos.h"
 #include "debug_defines.h"
 #include <helper/bits.h>
+#include <math.h>
 
 #define get_field(reg, mask) (((reg) & (mask)) / ((mask) & ~((mask) << 1)))
 #define set_field(reg, mask, val) (((reg) & ~(mask)) | (((val) * ((mask) & ~((mask) << 1))) & (mask)))
@@ -310,7 +311,7 @@ COMMAND_HANDLER(nuclei_set_examine_cpu_core)
 	return ERROR_OK;
 }
 
-COMMAND_HANDLER(handle_trace_enable_command)
+COMMAND_HANDLER(handle_etrace_enable_command)
 {
 	if (CMD_ARGC > 0)
 		return ERROR_COMMAND_SYNTAX_ERROR;
@@ -368,7 +369,7 @@ error:
 	return ERROR_OK;
 }
 
-COMMAND_HANDLER(handle_trace_disable_command)
+COMMAND_HANDLER(handle_etrace_disable_command)
 {
 	if (CMD_ARGC > 0)
 		return ERROR_COMMAND_SYNTAX_ERROR;
@@ -415,24 +416,6 @@ error:
 	LOG_ERROR("Unable to configure selected trace trigger %u.\n", (uint32_t)tselect);
 	return ERROR_OK;
 }
-
-static const struct command_registration trace_command_handlers[] = {
-	{
-		.name = "enable",
-		.handler = handle_trace_enable_command,
-		.mode = COMMAND_EXEC,
-		.help = "enable trace within a core",
-		.usage = "",
-	},
-	{
-		.name = "disable",
-		.handler = handle_trace_disable_command,
-		.mode = COMMAND_EXEC,
-		.help = "disable trace within a core",
-		.usage = "",
-	},
-	COMMAND_REGISTRATION_DONE
-};
 
 #define ETRACE_BASE_HI		(0x00)
 #define ETRACE_BASE_LO		(0x04)
@@ -693,14 +676,14 @@ COMMAND_HANDLER(handle_etrace_info_command)
 	etrace_read_reg(target, ETRACE_ENDOFFSET, &end_offset);
 	etrace_read_reg(target, ETRACE_FLG, &full_flag);
 
-	command_print(CMD, "ATB2AXI Addr: %#lx", atb2axi_config_addr);
-	command_print(CMD, "Buffer  Addr: %#lx", buffer_addr);
+	command_print(CMD, "ATB2AXI Addr: 0x%" PRIx64, atb2axi_config_addr);
+	command_print(CMD, "Buffer  Addr: 0x%" PRIx64, buffer_addr);
 	command_print(CMD, "Buffer  Size: %#x", buffer_size);
 	command_print_sameline(CMD, "Buffer Status: ");
 	if (full_flag)
-		command_print(CMD, "used 100%% from %#lx [wraped]", buffer_addr + end_offset);
+		command_print(CMD, "used 100%% from 0x%" PRIx64 " [wraped]", buffer_addr + end_offset);
 	else
-		command_print(CMD, "used %d%% from %#lx to %#lx", (end_offset * 100) / buffer_size, \
+		command_print(CMD, "used %d%% from 0x%" PRIx64 " to 0x%" PRIx64, (end_offset * 100) / buffer_size, \
 			buffer_addr, buffer_addr + end_offset);
 
 	return ERROR_OK;
@@ -716,16 +699,16 @@ static const struct command_registration etrace_command_handlers[] = {
 	},
 	{
 		.name = "enable",
-		.handler = handle_trace_enable_command,
+		.handler = handle_etrace_enable_command,
 		.mode = COMMAND_EXEC,
-		.help = "enable trace within a core",
+		.help = "enable etrace within a core",
 		.usage = "",
 	},
 	{
 		.name = "disable",
-		.handler = handle_trace_disable_command,
+		.handler = handle_etrace_disable_command,
 		.mode = COMMAND_EXEC,
-		.help = "disable trace within a core",
+		.help = "disable etrace within a core",
 		.usage = "",
 	},
 	{
@@ -766,228 +749,269 @@ static const struct command_registration etrace_command_handlers[] = {
 	COMMAND_REGISTRATION_DONE
 };
 
-//FUNNEL Registers
-#define BTRACE_FUNNEL		(0x0)
-#define BTRACE_FCTRL		(0x0)
-#define BTRACE_FIMPL		(0x4)
-#define BTRACE_FDISIN		(0x8)
-#define BTRACE_TSCTRL		(0x40)
-#define BTRACE_TSCNTLOW		(0x48)
-#define BTRACE_TSCNTHI		(0x4C)
-#define BTRACE_FCSTM_CS		(0xE00)
-#define BTRACE_FOVF		(0xE04)
-#define BTRACE_FINT		(0xE08)
-#define BTRACE_FTIMEOUT		(0xE0C)
-//AXI_SINK Registers
-#define BTRACE_AXI_SINK		(0x1000)
-#define BTRACE_RSCTRL		(0x0)
-#define BTRACE_RSIMPL		(0x4)
-#define BTRACE_RSSTARTL		(0x10)
-#define BTRACE_RSSTARTH		(0x14)
-#define BTRACE_RSLIMITL		(0x18)
-#define BTRACE_RSLIMITH		(0x1C)
-#define BTRACE_RSWPL		(0x20)
-#define BTRACE_RSWPH		(0x24)
-#define BTRACE_RCSTM_CS		(0xE00)
-//PIB_SINK Registers
-#define BTRACE_PIB_SINK		(0x2000)
-#define BTRACE_PSCTRL		(0x0)
-#define BTRACE_PSIMPL		(0x4)
-#define BTRACE_PSSYNC		(0xE00)
-#define BTRACE_PSTIMEOUT	(0xE04)
-//ATB_BRIDGE Registers
-#define BTRACE_ATB_BRIDGE	(0x3000)
-#define BTRACE_ABCTRL		(0x0)
-#define BTRACE_ABIMPL		(0x4)
-#define BTRACE_AB_STATUS	(0xE00)
-//Encoder Registers
-#define BTRACE_CORE0_TECTRL	(0x4000)
-#define BTRACE_CORE0_TEINSFEA	(0x4008)
-#define BTRACE_CORE0_TETSCTRL	(0x4040)
+//TRACE FUNNEL Registers
+#define TRACE_FUNNEL		(0x0000)
+#define TRFUNNELCONTROL		(0x0)
+#define TRFUNNELDISINPUT	(0x8)
+#define TRTSCONTROL		(0x40)
+//TRACE RAM Registers
+#define TRACE_RAM		(0x1000)
+#define TRRAMCONTROL		(0x0)
+#define TRRAMSTARTLOW		(0x10)
+#define TRRAMSTARTHIGH		(0x14)
+#define TRRAMLIMITLOW		(0x18)
+#define TRRAMLIMITHIGH		(0x1C)
+#define TRRAMWPLOW		(0x20)
+#define TRRAMWPHIGH		(0x24)
+//TRACE TE Registers
+#define TRACE_TE		(0x4000)
+#define TRTECONTROL		(0x0)
+#define TRTEINSTFEATURES	(0x8)
+#define TRTEDATACONTROL		(0x10)
+#define TRTEDATAFILTERS		(0x1c)
+#define TRTSCONTROL		(0x40)
+#define TRTEFILTER0CONTROL	(0x400)
+#define TRTEFILTER0MATCHDATA	(0x418)
 
-static target_addr_t btrace_config_addr = 0xa5a5a5a5;
-static target_addr_t btrace_buffer_addr = 0xa5a5a5a5;
-static target_addr_t btrace_buffer_size;
+static target_addr_t tracebundle_addr = 0xa5a5a5a5;
+static target_addr_t trace_ram_addr = 0xa5a5a5a5;
+static target_addr_t trace_ram_size;
+static target_addr_t end_ram_addr;
+static uint32_t trace_core_num = 0;
+static uint32_t trace_core_mask = 0;
 
-#define CHECK_BTRACE_CONFIGURED()	{ \
-		if (btrace_config_addr == 0xa5a5a5a5) { \
-			LOG_ERROR("Btrace is not configured, please configure it first!"); \
-			LOG_INFO("eg. nuclei btrace config btrace-addr buffer-addr buffer-size wrap(0|1) system-timestamp(0|1) system-timestamp-counter-div(1|4|16|64)"); \
+#define CHECK_TRACE_CONFIGURED()	{ \
+		if (tracebundle_addr == 0xa5a5a5a5) { \
+			LOG_ERROR("Trace is not configured, please configure it first!"); \
+			LOG_INFO("eg. nuclei trace config tracebundle-addr buffer-addr buffer-size wrap(0|1) core-mask timestamp(0|1|2|3) timestamp-div(0|1|2|3) datatrace"); \
 			return ERROR_OK; \
 		} \
 	}
 
-static int btrace_read_reg(struct target *target, uint32_t offset, uint32_t *value)
+static int trace_read_reg(struct target *target, uint32_t offset, uint32_t *value)
 {
-	CHECK_BTRACE_CONFIGURED();
-	int result = target_read_u32(target, btrace_config_addr + offset, value);
+	CHECK_TRACE_CONFIGURED();
+	int result = target_read_u32(target, tracebundle_addr + offset, value);
 	if (result != ERROR_OK) {
-		LOG_ERROR("Failed to read btrace register at %#lx", (uint64_t)(btrace_config_addr + offset));
+		LOG_ERROR("Failed to read trace register at %#lx", (uint64_t)(tracebundle_addr + offset));
 		return result;
 	}
 	return ERROR_OK;
 }
 
-static int btrace_write_reg(struct target *target, uint32_t offset, uint32_t value)
+static int trace_write_reg(struct target *target, uint32_t offset, uint32_t value)
 {
-	CHECK_BTRACE_CONFIGURED();
-	int result = target_write_u32(target, btrace_config_addr + offset, value);
+	CHECK_TRACE_CONFIGURED();
+	int result = target_write_u32(target, tracebundle_addr + offset, value);
 	if (result != ERROR_OK) {
-		LOG_ERROR("Failed to write btrace register %#lx with %#x", (uint64_t)(btrace_config_addr + offset), value);
+		LOG_ERROR("Failed to write trace register %#lx with %#x", (uint64_t)(tracebundle_addr + offset), value);
 		return result;
 	}
 	return ERROR_OK;
 }
 
-static int btrace_stop(struct target *target)
+COMMAND_HANDLER(handle_trace_config_command)
 {
-        uint32_t tmp;
-        uint32_t wait_idle = 0x100;
+	uint32_t wrap,timestamp,timestamp_div,datatrace,noaddr,nodata,load,store,tmp;
 
-        CHECK_BTRACE_CONFIGURED();
-        btrace_write_reg(target, BTRACE_FUNNEL + BTRACE_FDISIN, 0xFFFF);
-	uint32_t core_num;
-	btrace_read_reg(target, BTRACE_FUNNEL + BTRACE_FCSTM_CS, &core_num);
-	core_num = (core_num >> 1) & 0x1F;
-	for (int i = 0; i < core_num;i++) {
+	if (CMD_ARGC != 0x7)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	struct target *target = get_current_target(CMD_CTX);
+
+	COMMAND_PARSE_NUMBER(target_addr, CMD_ARGV[0], tracebundle_addr);
+	COMMAND_PARSE_NUMBER(target_addr, CMD_ARGV[1], trace_ram_addr);
+	COMMAND_PARSE_NUMBER(target_addr, CMD_ARGV[2], trace_ram_size);
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[3], wrap); wrap = wrap ? 1 : 0;
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[4], trace_core_mask);
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[5], timestamp);
+	timestamp_div = (timestamp >> 4) & 0xF;
+	timestamp = timestamp & 0xF;
+	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[6], datatrace);
+	noaddr = (datatrace >> 1) & 0x1;
+	nodata = (datatrace >> 2) & 0x1;
+	load = ((datatrace >> 3) & 0x1) ? 0 : 1;
+	store = ((datatrace >> 4) & 0x1) ? 0 : 1;
+
+	// set active
+	trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
+	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, tmp | 0x1);
+	trace_read_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, &tmp);
+	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, tmp | 0x1);
+	trace_read_reg(target, TRACE_FUNNEL + TRTSCONTROL, &tmp);
+	trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, tmp | 0x1);
+	// Read Core Number
+	if (trace_write_reg(target,TRACE_FUNNEL + TRFUNNELDISINPUT, 0xFFFFFFFF) != ERROR_OK) {
+		/* Only check first register read, if ok, assume configured correct */
+		LOG_ERROR("Unable to read tracebundle register, please check!");
+		return ERROR_OK;
+	}
+	trace_read_reg(target, TRACE_FUNNEL + TRFUNNELDISINPUT, &trace_core_num);
+	trace_core_num = log2(trace_core_num + 1);
+	trace_write_reg(target,TRACE_FUNNEL + TRFUNNELDISINPUT, 0x0);
+	for (int i = 0;i < trace_core_num;i++) {
+		if ((trace_core_mask & (0x1 << i)) == 0) continue;
+		trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
+		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp | 0x1);
+		trace_read_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, &tmp);
+		trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, tmp | 0x1);
+	}
+	// config
+	if (wrap == 0) { // need to set trRamStopOnWrap
+		trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
+		trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, tmp | (0x1 << 8));
+	}
+	trace_write_reg(target, TRACE_RAM + TRRAMSTARTLOW, (uint32_t)trace_ram_addr);
+	trace_write_reg(target, TRACE_RAM + TRRAMSTARTHIGH, (uint32_t)(trace_ram_addr >> 32));
+	trace_write_reg(target, TRACE_RAM + TRRAMLIMITLOW, (uint32_t)(trace_ram_addr + trace_ram_size - 4));
+	trace_write_reg(target, TRACE_RAM + TRRAMLIMITHIGH, (uint32_t)((trace_ram_addr + trace_ram_size) >> 32));
+	trace_write_reg(target, TRACE_RAM + TRRAMWPLOW, (uint32_t)trace_ram_addr);
+	trace_write_reg(target, TRACE_RAM + TRRAMWPHIGH, (uint32_t)(trace_ram_addr >> 32));
+	switch (timestamp) {
+	case 0:// none-timestamp
+		trace_read_reg(target, TRACE_FUNNEL + TRTSCONTROL, &tmp);
+		trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, tmp & ~(0x7 << 4));
+		for (int i = 0;i < trace_core_num;i++) {
+			if ((trace_core_mask & (0x1 << i)) == 0) continue;
+			trace_read_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, tmp & ~(0x7 << 4));
+		}
+		break;
+	case 1:// cpu-timestamp
+		trace_read_reg(target, TRACE_FUNNEL + TRTSCONTROL, &tmp);
+		trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, tmp & ~(0x7 << 4));
+		for (int i = 0;i < trace_core_num;i++) {
+			if ((trace_core_mask & (0x1 << i)) == 0) continue;
+			trace_read_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, (tmp & ~(0x7 << 4)) | (0x3 << 4) | (0x1 << 1));
+			// config div in encoder
+			trace_read_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, (tmp & ~(0x3 << 8)) | (timestamp_div << 8) | (0x1 << 15));
+		}
+		break;
+	case 2:// funnel-timestamp
+		trace_read_reg(target, TRACE_FUNNEL + TRTSCONTROL, &tmp);
+		trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, (tmp & ~(0x7 << 4)) | (0x2 << 4) | (0x1 << 1));
+		for (int i = 0;i < trace_core_num;i++) {
+			if ((trace_core_mask & (0x1 << i)) == 0) continue;
+			trace_read_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, (tmp & ~(0x7 << 4)) | (0x4 << 4) | (0x1 << 15));
+		}
+		// config div in funnel
+		trace_read_reg(target, TRACE_FUNNEL + TRTSCONTROL, &tmp);
+		trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, (tmp & ~(0x3 << 8)) | (timestamp_div << 8));
+		break;
+	case 3:// external-timestamp
+		trace_read_reg(target, TRACE_FUNNEL + TRTSCONTROL, &tmp);
+		trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, tmp & ~(0x7 << 4));
+		for (int i = 0;i < trace_core_num;i++) {
+			if ((trace_core_mask & (0x1 << i)) == 0) continue;
+			trace_read_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, (tmp & ~(0x7 << 4)) | (0x1 << 4) | (0x1 << 15));
+		}
+		break;
+	default:
+		break;
+	}
+	for (int i = 0;i < trace_core_num;i++) {
+		if ((trace_core_mask & (0x1 << i)) == 0) continue;
+		trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
+		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp | (0x1 << 11) | (0x1 << 2));
+		// set srcid
+		trace_read_reg(target, TRACE_TE + TRTEINSTFEATURES + i * 0x1000, &tmp);
+		trace_write_reg(target, TRACE_TE + TRTEINSTFEATURES + i * 0x1000, (tmp & ~(0xFFF << 16)) | (i << 16));
+		// datatrace
+		trace_read_reg(target, TRACE_TE + TRTEDATACONTROL + i * 0x1000, &tmp);
+		if (0 == (tmp & 0x1))
+			continue;// not support datatrace
+		if (datatrace & 0x1) {
+			trace_write_reg(target, TRACE_TE + TRTEDATACONTROL + i * 0x1000, (tmp & ~(0x3 << 16)) | (0x1 << 1) | (nodata << 16) | (noaddr << 17));
+			trace_read_reg(target, TRACE_TE + TRTEDATAFILTERS + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTEDATAFILTERS + i * 0x1000, tmp | 0x1);
+			trace_read_reg(target, TRACE_TE + TRTEFILTER0CONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTEFILTER0CONTROL + i * 0x1000, tmp | 0x1 | (0x1 << 24));
+			trace_read_reg(target, TRACE_TE + TRTEFILTER0MATCHDATA + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTEFILTER0MATCHDATA + i * 0x1000, (tmp & ~(0x3)) | load | (store << 1));
+		}
+	}
+
+	return ERROR_OK;
+}
+
+COMMAND_HANDLER(handle_trace_start_command)
+{
+	if (CMD_ARGC > 0)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	CHECK_TRACE_CONFIGURED();
+	struct target *target = get_current_target(CMD_CTX);
+
+	uint32_t tmp;
+	trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
+	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, tmp | (0x1 << 1));
+	trace_read_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, &tmp);
+	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, tmp | (0x1 << 1));
+	for (int i = 0;i < trace_core_num;i++) {
+		trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
+		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp | (0x1 << 1));
+	}
+
+	return ERROR_OK;
+}
+
+COMMAND_HANDLER(handle_trace_stop_command)
+{
+	if (CMD_ARGC > 0)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	CHECK_TRACE_CONFIGURED();
+	struct target *target = get_current_target(CMD_CTX);
+
+	uint32_t tmp, wait_idle;
+	for (int i = 0;i < trace_core_num;i++) {
+		trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
+		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp & ~(0x1 << 1));
+		wait_idle = 0x100;
 		do {
-			btrace_read_reg(target, BTRACE_CORE0_TECTRL + i * 0x1000, &tmp);
-			wait_idle -= 1;
+			trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
 			if (wait_idle == 0) {
 				LOG_ERROR("Timeout to wait core%d encoder empty!", i);
 				break;
 			}
-		}while (!(tmp & 0x8));
-		btrace_write_reg(target, BTRACE_CORE0_TECTRL + i * 0x1000, tmp & (~0x2));
-		wait_idle = 0x100;
+			wait_idle -= 1;
+		} while ((tmp & 0x8) != 0x8);
+		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, 0x0);
 	}
-        /*do {
-                btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, &tmp);
-                wait_idle -= 1;
-                if (wait_idle == 0) {
-			LOG_ERROR("Timeout to wait axi sink empty");
-                        break;
+	trace_read_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, &tmp);
+	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, tmp & ~(0x1 << 1));
+	wait_idle = 0x100;
+	do {
+		trace_read_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, &tmp);
+		if (wait_idle == 0) {
+			LOG_ERROR("Timeout to wait funnel empty!");
+			break;
 		}
-        } while (!(tmp & 0x8));
-	*/
-        wait_idle = 0x100;
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, &tmp);
-        btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, tmp & (~0x2));
-        do {
-                btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RCSTM_CS, &tmp);
-                wait_idle -= 1;
-                if (wait_idle == 0) {
-			LOG_ERROR("Timeout to wait axi sink idle");
-                        break;
+		wait_idle -= 1;
+	} while ((tmp & 0x8) != 0x8);
+	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, 0x0);
+	trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
+	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, tmp & ~(0x1 << 1));
+	wait_idle = 0x100;
+	do {
+		trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
+		if (wait_idle == 0) {
+			LOG_ERROR("Timeout to wait ram empty!");
+			break;
 		}
-        } while (!(tmp & 0x4));
-        return ERROR_OK;
-}
-
-COMMAND_HANDLER(handle_btrace_config_command)
-{
-	uint32_t wrap, system_timestamp, system_timestamp_counter_div, tmp;
-
-	if (CMD_ARGC != 6)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	struct target *target = get_current_target(CMD_CTX);
-
-	COMMAND_PARSE_NUMBER(target_addr, CMD_ARGV[0], btrace_config_addr);
-	COMMAND_PARSE_NUMBER(target_addr, CMD_ARGV[1], btrace_buffer_addr);
-	COMMAND_PARSE_NUMBER(target_addr, CMD_ARGV[2], btrace_buffer_size);
-	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[3], wrap);
-	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[4], system_timestamp);
-	COMMAND_PARSE_NUMBER(u32, CMD_ARGV[5], system_timestamp_counter_div);
-
-	// Read Core Number
-	uint32_t core_num;
-	if (btrace_read_reg(target, BTRACE_FUNNEL + BTRACE_FCSTM_CS, &core_num) != ERROR_OK) {
-		/* Only check first register write, if ok, assume configured correct */
-		LOG_ERROR("Unable to write btrace register, please check!");
-		return ERROR_OK;
-	}
-	core_num = (core_num >> 1) & 0x1F;
-	// Clear All Active And Enable
-	btrace_read_reg(target, BTRACE_FUNNEL + BTRACE_FCTRL, &tmp);
-	btrace_write_reg(target, BTRACE_FUNNEL + BTRACE_FCTRL, tmp & (~0x3));
-	btrace_read_reg(target, BTRACE_FUNNEL + BTRACE_TSCTRL, &tmp);
-	btrace_write_reg(target, BTRACE_FUNNEL + BTRACE_TSCTRL, tmp & (~0x3));
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, &tmp);
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, tmp & (~0x3));
-	// Clear wrap flag
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSWPL, 0x00);
-	for (int i = 0;i < core_num;i++) {
-		btrace_read_reg(target, BTRACE_CORE0_TECTRL + i * 0x1000, &tmp);
-		btrace_write_reg(target, BTRACE_CORE0_TECTRL + i * 0x1000, tmp & (~0x3));
-	}
-	// Config Btrace Funnel
-	btrace_read_reg(target, BTRACE_FUNNEL + BTRACE_FCTRL, &tmp);
-	btrace_write_reg(target, BTRACE_FUNNEL + BTRACE_FCTRL, tmp | 0x3);
-	btrace_read_reg(target, BTRACE_FUNNEL + BTRACE_TSCTRL, &tmp);
-	if (system_timestamp) { tmp |= 0x27; } else { tmp |= 0x37;}
-	switch (system_timestamp_counter_div) {
-		case  1: tmp |= 0x000; break;
-		case  4: tmp |= 0x100; break;
-		case 16: tmp |= 0x200; break;
-		case 64: tmp |= 0x300; break;
-		default: LOG_ERROR("Invaild system_timestamp_counter_div config"); return ERROR_OK;
-	}
-	btrace_write_reg(target, BTRACE_FUNNEL + BTRACE_TSCTRL, tmp);
-	btrace_write_reg(target, BTRACE_FUNNEL + BTRACE_TSCTRL, 0x3);
-	// Config Btrace AXI_SINK
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, &tmp);
-	tmp &= ~0x100;
-	if (wrap) { tmp |= 0x1; } else { tmp |= 0x101; };
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, tmp);
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSSTARTL, (uint32_t)btrace_buffer_addr);
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSSTARTH, (uint32_t)(btrace_buffer_addr >> 32));
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSLIMITL, (uint32_t)(btrace_buffer_addr + btrace_buffer_size));
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSLIMITH, (uint32_t)((btrace_buffer_addr + btrace_buffer_size) >> 32));
-
-	for (int i = 0;i < core_num;i++) {
-		btrace_read_reg(target, BTRACE_CORE0_TECTRL + i * 0x1000, &tmp);
-		btrace_write_reg(target, BTRACE_CORE0_TECTRL + i * 0x1000, tmp | 0x803);
-		btrace_read_reg(target, BTRACE_CORE0_TEINSFEA + i * 0x1000, &tmp);
-		btrace_write_reg(target, BTRACE_CORE0_TEINSFEA + i * 0x1000, tmp | 0x8);
-		btrace_write_reg(target, BTRACE_CORE0_TETSCTRL + i * 0x1000, 0x8033);
-	}
-        btrace_write_reg(target, BTRACE_FUNNEL + BTRACE_FDISIN, 0x0);
+		wait_idle -= 1;
+	} while ((tmp & 0x8) != 0x8);
+	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, 0x0);
 
 	return ERROR_OK;
 }
 
-COMMAND_HANDLER(handle_btrace_start_command)
+COMMAND_HANDLER(handle_trace_dump_command)
 {
-	if (CMD_ARGC > 0)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	CHECK_BTRACE_CONFIGURED();
-	struct target *target = get_current_target(CMD_CTX);
-
-	uint32_t tmp;
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, &tmp);
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, tmp | 0x2);
-
-	return ERROR_OK;
-}
-
-COMMAND_HANDLER(handle_btrace_stop_command)
-{
-	if (CMD_ARGC > 0)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	CHECK_BTRACE_CONFIGURED();
-	struct target *target = get_current_target(CMD_CTX);
-
-	btrace_stop(target);
-
-	return ERROR_OK;
-}
-
-COMMAND_HANDLER(handle_btrace_dump_command)
-{
-	target_addr_t end_buffer_addr;
 	uint32_t wrap_flag;
 	target_addr_t address;
 	uint32_t size;
@@ -999,34 +1023,34 @@ COMMAND_HANDLER(handle_btrace_dump_command)
 	if (CMD_ARGC != 1)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
-	CHECK_BTRACE_CONFIGURED();
+	CHECK_TRACE_CONFIGURED();
 	struct target *target = get_current_target(CMD_CTX);
 
 	uint32_t tmp = 0;
-
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSCTRL, &tmp);
-	if (tmp & 0x2) {
-		LOG_ERROR("Btrace is still running, please use nuclei btrace stop to stop it first!");
+	trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
+	if (tmp & (0x1 << 1)) {
+		LOG_ERROR("trace is still running, please use nuclei trace stop to stop it first!");
 		return ERROR_OK;
 	}
 
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSWPH, &tmp);
-	end_buffer_addr = tmp;
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSWPL, &tmp);
+	trace_read_reg(target, TRACE_RAM + TRRAMWPHIGH, &tmp);
+	end_ram_addr = tmp;
+	trace_read_reg(target, TRACE_RAM + TRRAMWPLOW, &tmp);
 	wrap_flag = tmp & 0x1;
-	end_buffer_addr = (end_buffer_addr << 32) + (tmp & (~0x1));
+	end_ram_addr = (end_ram_addr << 32) + (tmp & (~0x1));
 	if (wrap_flag) {
-		address = end_buffer_addr;
-		size = btrace_buffer_size;
+		address = end_ram_addr;
+		size = trace_ram_size;
 	} else {
-		address = btrace_buffer_addr;
-		size = end_buffer_addr - btrace_buffer_addr;
+		address = trace_ram_addr;
+		size = end_ram_addr - trace_ram_addr;
 	}
 
 	if (size == 0) {
-		command_print(CMD, "No btrace could be dumped!");
+		command_print(CMD, "No trace could be dumped!");
 		goto ok;
 	}
+	command_print(CMD, "Dumped %#x bytes data from 0x%" PRIx64, size, address);
 	uint32_t temp_size = (size > 4096) ? 4096 : size;
 	temp = malloc(temp_size);
 	if (!temp)
@@ -1040,8 +1064,8 @@ COMMAND_HANDLER(handle_btrace_dump_command)
 	while (size > 0) {
 		size_t size_written;
 		uint32_t this_run_size = (size > temp_size) ? temp_size : size;
-		if ((this_run_size + address) > (btrace_buffer_addr + btrace_buffer_size))
-			this_run_size = (btrace_buffer_addr + btrace_buffer_size) - address;
+		if ((this_run_size + address) > (trace_ram_addr + trace_ram_size))
+			this_run_size = (trace_ram_addr + trace_ram_size) - address;
 
 		retval = target_read_buffer(target, address, this_run_size, temp);
 		if (retval != ERROR_OK)
@@ -1052,8 +1076,8 @@ COMMAND_HANDLER(handle_btrace_dump_command)
 			break;
 
 		size -= this_run_size;
-		if ((this_run_size + address) == (btrace_buffer_addr + btrace_buffer_size))
-			address = btrace_buffer_addr;
+		if ((this_run_size + address) == (trace_ram_addr + trace_ram_size))
+			address = trace_ram_addr;
 		else
 			address += this_run_size;
 	}
@@ -1062,7 +1086,7 @@ COMMAND_HANDLER(handle_btrace_dump_command)
 		size_t filesize;
 		fileio_size(fileio, &filesize);
 		command_print(CMD,
-				"Dumped btrace %zu bytes in %fs (%0.3f KiB/s)", filesize,
+				"Dumped trace %zu bytes in %fs (%0.3f KiB/s)", filesize,
 				duration_elapsed(&bench), duration_kbps(&bench, filesize));
 	} else {
 		goto fail;
@@ -1070,7 +1094,7 @@ COMMAND_HANDLER(handle_btrace_dump_command)
 
 	goto ok;
 fail:
-	LOG_ERROR("Unexpected error happened during dumping btrace!");
+	LOG_ERROR("Unexpected error happened during dumping trace!");
 	retval = ERROR_OK;
 ok:
 	if (fileio)
@@ -1081,107 +1105,77 @@ ok:
 	return retval;
 }
 
-COMMAND_HANDLER(handle_btrace_clear_command)
+COMMAND_HANDLER(handle_trace_info_command)
 {
-	if (CMD_ARGC > 0)
-		return ERROR_COMMAND_SYNTAX_ERROR;
-
-	CHECK_BTRACE_CONFIGURED();
-	struct target *target = get_current_target(CMD_CTX);
-
-	btrace_stop(target);
-
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSWPH, 0);
-	btrace_write_reg(target, BTRACE_AXI_SINK + BTRACE_RSWPL, 0);
-
-	return ERROR_OK;
-}
-
-COMMAND_HANDLER(handle_btrace_info_command)
-{
-	target_addr_t end_buffer_addr;
 	uint32_t wrap_flag, tmp;
 
-	CHECK_BTRACE_CONFIGURED();
+	CHECK_TRACE_CONFIGURED();
 	if (CMD_ARGC > 0)
 		return ERROR_COMMAND_SYNTAX_ERROR;
 
 	struct target *target = get_current_target(CMD_CTX);
 
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSWPH, &tmp);
-	end_buffer_addr = tmp;
-	btrace_read_reg(target, BTRACE_AXI_SINK + BTRACE_RSWPL, &tmp);
+	trace_read_reg(target, TRACE_RAM + TRRAMWPHIGH, &tmp);
+	end_ram_addr = tmp;
+	trace_read_reg(target, TRACE_RAM + TRRAMWPLOW, &tmp);
 	wrap_flag = tmp & 0x1;
-	end_buffer_addr = (end_buffer_addr << 32) + (tmp & (~0x1));
+	end_ram_addr = (end_ram_addr << 32) + (tmp & (~0x1));
 
-	command_print(CMD, "Btrace Addr: %#lx", btrace_config_addr);
-	command_print(CMD, "Buffer Addr: %#lx", btrace_buffer_addr);
-	command_print(CMD, "Buffer Size: %#lx", btrace_buffer_size);
-	command_print_sameline(CMD, "Buffer Status: ");
-	if (wrap_flag)
-		command_print(CMD, "used 100%% from %#lx [wraped]", end_buffer_addr);
-	else
-		command_print(CMD, "used %d%% from %#lx to %#lx", \
-		(uint32_t)(((end_buffer_addr - btrace_buffer_addr) * 100) / btrace_buffer_size), btrace_buffer_addr, end_buffer_addr);
+	command_print(CMD, "TraceBundle Addr: 0x%" PRIx64, tracebundle_addr);
+	command_print(CMD, "Ram Addr        : 0x%" PRIx64, trace_ram_addr);
+	command_print(CMD, "Ram Size        : 0x%" PRIx64, trace_ram_size);
+	command_print_sameline(CMD, "Ram Status: ");
+	trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
+	tmp = (tmp & (0x1 << 8)) ? 0 : 1;
+	if (wrap_flag & tmp) {
+		command_print(CMD, "used 100%% from 0x%" PRIx64 " [wraped]", end_ram_addr);
+	} else {
+		if (wrap_flag)
+			tmp = 100;
+		else
+			tmp = ((end_ram_addr - trace_ram_addr) * 100) / trace_ram_size;
+		command_print(CMD, "used %d%% from 0x%" PRIx64 " to 0x%" PRIx64, tmp, trace_ram_addr, end_ram_addr);
+	}
 
 	return ERROR_OK;
 }
 
-static const struct command_registration btrace_command_handlers[] = {
+static const struct command_registration trace_command_handlers[] = {
 	{
 		.name = "config",
-		.handler = handle_btrace_config_command,
+		.handler = handle_trace_config_command,
 		.mode = COMMAND_EXEC,
-		.help = "Configuration btrace.",
-		.usage = "btrace-addr buffer-addr buffer-size wrap(0|1) system-timestamp(0|1) system-timestamp-counter-div(1|4|16|64)",
-	},
-	{
-		.name = "enable",
-		.handler = handle_trace_enable_command,
-		.mode = COMMAND_EXEC,
-		.help = "enable trace within a core",
-		.usage = "",
-	},
-	{
-		.name = "disable",
-		.handler = handle_trace_disable_command,
-		.mode = COMMAND_EXEC,
-		.help = "disable trace within a core",
-		.usage = "",
+		.help = "Configuration trace.",
+		.usage = "tracebundle-addr buffer-addr buffer-size wrap core-mask timestamp datatrace"
+			 "timestamp: [7:4]:timestamp-div, [3:0]:timestamp-src"
+			 "datatrace: [4]:no-store, [3]:no-load,[2]:no-value,[1]:no-addr, [0]:datatrace-en",
 	},
 	{
 		.name = "start",
-		.handler = handle_btrace_start_command,
+		.handler = handle_trace_start_command,
 		.mode = COMMAND_EXEC,
-		.help = "start btrace collection",
+		.help = "start trace collection",
 		.usage = "",
 	},
 	{
 		.name = "stop",
-		.handler = handle_btrace_stop_command,
+		.handler = handle_trace_stop_command,
 		.mode = COMMAND_EXEC,
-		.help = "stop btrace collection",
+		.help = "stop trace collection",
 		.usage = "",
 	},
 	{
 		.name = "dump",
-		.handler = handle_btrace_dump_command,
+		.handler = handle_trace_dump_command,
 		.mode = COMMAND_EXEC,
-		.help = "dump btrace data",
+		.help = "dump trace data",
 		.usage = "filename",
 	},
 	{
-		.name = "clear",
-		.handler = handle_btrace_clear_command,
-		.mode = COMMAND_EXEC,
-		.help = "clear btrace data",
-		.usage = "",
-	},
-	{
 		.name = "info",
-		.handler = handle_btrace_info_command,
+		.handler = handle_trace_info_command,
 		.mode = COMMAND_EXEC,
-		.help = "display btrace info",
+		.help = "display trace info",
 		.usage = "",
 	},
 	COMMAND_REGISTRATION_DONE
@@ -1282,13 +1276,6 @@ const struct command_registration nuclei_command_group_handlers[] = {
 				"value = dm-custom2 << 32 + dm-custom1 "
 	},
 	{
-		.name = "trace",
-		.mode = COMMAND_ANY,
-		.help = "Trace command group",
-		.usage = "",
-		.chain = trace_command_handlers,
-	},
-	{
 		.name = "etrace",
 		.mode = COMMAND_ANY,
 		.help = "Etrace command group",
@@ -1296,11 +1283,11 @@ const struct command_registration nuclei_command_group_handlers[] = {
 		.chain = etrace_command_handlers,
 	},
 	{
-		.name = "btrace",
+		.name = "trace",
 		.mode = COMMAND_ANY,
-		.help = "Btrace command group",
+		.help = "Trace command group",
 		.usage = "",
-		.chain = btrace_command_handlers,
+		.chain = trace_command_handlers,
 	},
 	{
 		.name = "cti",
