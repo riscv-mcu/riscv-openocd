@@ -158,7 +158,8 @@ static int examine_vlenb(struct target *target)
 	assert(vlenb_max <= UINT_MAX);
 	r->vlenb = (unsigned int)vlenb_val;
 
-	LOG_TARGET_INFO(target, "Vector support with vlenb=%u", r->vlenb);
+	if (r->vlenb)
+		LOG_TARGET_INFO(target, "Vector support with vlenb=%u", r->vlenb);
 	return ERROR_OK;
 }
 
@@ -267,6 +268,15 @@ static int examine_misa(struct target *target)
 static int examine_mtopi(struct target *target)
 {
 	RISCV_INFO(r);
+
+	riscv_reg_t marchid;
+	if (riscv_reg_get(target, &marchid, GDB_REGNO_CSR0 + CSR_MARCHID) == ERROR_OK) {
+		if (marchid == 0x100) {
+			r->mtopi_readable = false;
+			r->mtopei_readable = false;
+			return ERROR_OK;
+		}
+	}
 
 	/* Assume the registers exist */
 	r->mtopi_readable = true;
