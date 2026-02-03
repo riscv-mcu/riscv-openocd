@@ -1297,6 +1297,9 @@ static int jtag_examine_chain(void)
 		} else {
 			/* Friendly devices support IDCODE */
 			tap->has_idcode = true;
+			// The devices of GD32VF103 series devices are 32-bit general-purpose microcontrollers based on the Nuclei Bumblebee processor, 
+			// see https://download.gigadevice.com/User_Manual/GD32VF103_User_Manual_Rev1.8.pdf
+			if (idcode == 0x1000563d) { idcode = 0x10005a6d; }
 			tap->idcode = idcode;
 			jtag_examine_chain_display(LOG_LVL_INFO, "tap/device found", tap->dotted_name, idcode);
 
