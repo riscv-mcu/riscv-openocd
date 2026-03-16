@@ -45,6 +45,7 @@ struct flash_bank_msg {
 	uint32_t param_1;
 	bool simulation;
 	uint32_t sectorsize;
+	uint32_t wrsize;
 };
 
 static int custom_run_algorithm(struct flash_bank *bank)
@@ -74,7 +75,7 @@ static int custom_run_algorithm(struct flash_bank *bank)
 			free(full_path);
 		} else {
 			LOG_ERROR("Unable to find flashloader %s in openocd configuration search dirs.", (char*)bank_msg->loader_path);
-			return ERROR_FAIL;
+			goto err;
 		}
 	} else {
 		LOG_INFO("Using custom flashloader %s", bank_msg->loader_path);
@@ -102,19 +103,30 @@ static int custom_run_algorithm(struct flash_bank *bank)
 		retval = target_write_buffer(target, algorithm_wa->address, bin_size, bin);
 		if (retval != ERROR_OK) {
 			LOG_ERROR("Failed to write code to " TARGET_ADDR_FMT ": %d",
-					algorithm_wa->address, retval);
+				algorithm_wa->address, retval);
 			target_free_working_area(target, algorithm_wa);
 			algorithm_wa = NULL;
 		} else if ((bank_msg->cs == WRITE_CMD) || (bank_msg->cs == READ_CMD)) {
 			data_wa_size = MIN(target->working_area_size - algorithm_wa->size, bank_msg->param_0);
+			data_wa_size = (data_wa_size / bank_msg->wrsize) * bank_msg->wrsize;
+			if (data_wa_size < bank_msg->wrsize) {
+				LOG_ERROR("data_wa_size %d less than wrsize %d", data_wa_size, bank_msg->wrsize);
+				retval = ERROR_FAIL;
+				goto err;
+			}
 			while (1) {
 				if (target_alloc_working_area_try(target, data_wa_size, &data_wa) == ERROR_OK)
 					break;
-				data_wa_size = data_wa_size * 3 / 4;
+				data_wa_size -= bank_msg->wrsize;
+				if (data_wa_size < bank_msg->wrsize) {
+					LOG_ERROR("alloc data_wa_size %d less than wrsize %d", data_wa_size, bank_msg->wrsize);
+					retval = ERROR_FAIL;
+					goto err;
+				}
 			}
 		}
 	} else {
-		LOG_WARNING("Couldn't allocate %zd-byte working area.", bin_size);
+		LOG_WARNING("Couldn't allocate %zd-byte working area for loader.bin.", bin_size);
 		algorithm_wa = NULL;
 	}
 
@@ -168,7 +180,17 @@ static int custom_run_algorithm(struct flash_bank *bank)
 			offset = bank_msg->param_1;
 			cur_count = 0;
 			while (count > 0) {
-				cur_count = MIN(count, data_wa_size);
+				/* First: align to bank_msg->wrsize boundary */
+				if ((offset % bank_msg->wrsize) != 0) {
+					cur_count = data_wa_size - (offset % bank_msg->wrsize);
+					cur_count = MIN(cur_count, count);
+				} else if (count >= data_wa_size) {
+					/* Middle: use aligned data_wa_size */
+					cur_count = data_wa_size;
+				} else {
+					/* Last: remaining data */
+					cur_count = count;
+				}
 				buf_set_u64(reg_params[0].value, 0, xlen, bank_msg->cs);
 				buf_set_u64(reg_params[1].value, 0, xlen, bank_msg->ctrl_base);
 				buf_set_u64(reg_params[2].value, 0, xlen, data_wa->address);
@@ -177,7 +199,7 @@ static int custom_run_algorithm(struct flash_bank *bank)
 				retval = target_write_buffer(target, data_wa->address, cur_count, bank_msg->buffer);
 				if (retval != ERROR_OK) {
 					LOG_DEBUG("Failed to write %d bytes to " TARGET_ADDR_FMT ": %d",
-							cur_count, data_wa->address, retval);
+						cur_count, data_wa->address, retval);
 					goto err;
 				}
 				if (bank_msg->simulation) {
@@ -186,12 +208,12 @@ static int custom_run_algorithm(struct flash_bank *bank)
 						algorithm_wa->address, 0, 0x7FFFFFFF, NULL);
 				} else {
 					retval = target_run_algorithm(target, 0, NULL,
-							ARRAY_SIZE(reg_params), reg_params,
-							algorithm_wa->address, 0, cur_count * 2, NULL);
+						ARRAY_SIZE(reg_params), reg_params,
+						algorithm_wa->address, 0, cur_count * 2, NULL);
 				}
 				if (retval != ERROR_OK) {
 					LOG_ERROR("Failed to execute algorithm at " TARGET_ADDR_FMT ": %d",
-							algorithm_wa->address, retval);
+						algorithm_wa->address, retval);
 					goto err;
 				}
 				algorithm_result = buf_get_u64(reg_params[0].value, 0, xlen);
@@ -211,7 +233,17 @@ static int custom_run_algorithm(struct flash_bank *bank)
 			offset = bank_msg->param_1;
 			cur_count = 0;
 			while (count > 0) {
-				cur_count = MIN(count, data_wa_size);
+				/* First: align to bank_msg->wrsize boundary */
+				if ((offset % bank_msg->wrsize) != 0) {
+					cur_count = data_wa_size - (offset % bank_msg->wrsize);
+					cur_count = MIN(cur_count, count);
+				} else if (count >= data_wa_size) {
+					/* Middle: use aligned data_wa_size */
+					cur_count = data_wa_size;
+				} else {
+					/* Last: remaining data */
+					cur_count = count;
+				}
 				buf_set_u64(reg_params[0].value, 0, xlen, bank_msg->cs);
 				buf_set_u64(reg_params[1].value, 0, xlen, bank_msg->ctrl_base);
 				buf_set_u64(reg_params[2].value, 0, xlen, data_wa->address);
@@ -223,12 +255,12 @@ static int custom_run_algorithm(struct flash_bank *bank)
 						algorithm_wa->address, 0, 0x7FFFFFFF, NULL);
 				} else {
 					retval = target_run_algorithm(target, 0, NULL,
-							ARRAY_SIZE(reg_params), reg_params,
-							algorithm_wa->address, 0, cur_count * 2, NULL);
+						ARRAY_SIZE(reg_params), reg_params,
+						algorithm_wa->address, 0, cur_count * 2, NULL);
 				}
 				if (retval != ERROR_OK) {
 					LOG_ERROR("Failed to execute algorithm at " TARGET_ADDR_FMT ": %d",
-							algorithm_wa->address, retval);
+						algorithm_wa->address, retval);
 					goto err;
 				}
 				algorithm_result = buf_get_u64(reg_params[0].value, 0, xlen);
@@ -241,7 +273,7 @@ static int custom_run_algorithm(struct flash_bank *bank)
 				retval = target_read_buffer(target, data_wa->address, cur_count, bank_msg->buffer);
 				if (retval != ERROR_OK) {
 					LOG_DEBUG("Failed to read %d bytes from " TARGET_ADDR_FMT ": %d",
-							cur_count, data_wa->address, retval);
+						cur_count, data_wa->address, retval);
 					goto err;
 				}
 				bank_msg->buffer += cur_count;
@@ -283,8 +315,10 @@ err:
 	if (bin) {
 		free(bin);
 	}
-	if (algorithm_wa) {
+	if (data_wa) {
 		target_free_working_area(target, data_wa);
+	}
+	if (algorithm_wa) {
 		target_free_working_area(target, algorithm_wa);
 	}
 	return retval;
@@ -298,7 +332,7 @@ FLASH_BANK_COMMAND_HANDLER(custom_flash_bank_command)
 
 	if (CMD_ARGC < 8) {
 		LOG_ERROR("Parameter error:");
-		LOG_ERROR("flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10014000 ~/work/riscv.bin [simulation] [sectorsize=]");
+		LOG_ERROR("flash bank $FLASHNAME custom 0x20000000 0 0 0 $TARGETNAME 0x10014000 ~/work/riscv.bin [simulation] [sectorsize=] [wrsize=]");
 		return ERROR_COMMAND_SYNTAX_ERROR;
 	}
 
@@ -320,7 +354,7 @@ FLASH_BANK_COMMAND_HANDLER(custom_flash_bank_command)
 	COMMAND_PARSE_ADDRESS(CMD_ARGV[6], bank_msg->ctrl_base);
 	LOG_DEBUG("ASSUMING CUSTOM device at ctrl_base = " TARGET_ADDR_FMT,
 			bank_msg->ctrl_base);
-	bank_msg->loader_path = malloc(strlen(CMD_ARGV[7]));
+	bank_msg->loader_path = malloc(strlen(CMD_ARGV[7]) + 1);
 	strcpy((char*)bank_msg->loader_path, CMD_ARGV[7]);
 	for (char *p = bank_msg->loader_path; *p; p++) {
 		if (*p == '\\')
@@ -328,6 +362,7 @@ FLASH_BANK_COMMAND_HANDLER(custom_flash_bank_command)
 	}
 	bank_msg->simulation = false;
 	bank_msg->sectorsize = 0;
+	bank_msg->wrsize = 1;
 	for (unsigned int i = 8; i < CMD_ARGC; i++) {
 		if(strcmp(CMD_ARGV[i], "simulation") == 0) {
 			bank_msg->simulation = true;
@@ -336,6 +371,10 @@ FLASH_BANK_COMMAND_HANDLER(custom_flash_bank_command)
 		if(strncmp(CMD_ARGV[i], "sectorsize=", strlen("sectorsize=")) == 0) {
 			COMMAND_PARSE_NUMBER(u32, CMD_ARGV[i]+strlen("sectorsize="), bank_msg->sectorsize);
 			LOG_DEBUG("Custom flash sectorsize is %x", bank_msg->sectorsize);
+		}
+		if(strncmp(CMD_ARGV[i], "wrsize=", strlen("wrsize=")) == 0) {
+			COMMAND_PARSE_NUMBER(u32, CMD_ARGV[i]+strlen("wrsize="), bank_msg->wrsize);
+			LOG_DEBUG("Custom flash wrsize is %x", bank_msg->wrsize);
 		}
 	}
 
@@ -399,6 +438,21 @@ static int custom_probe(struct flash_bank *bank)
 			break;
 		}
 	}
+
+	bank_msg->cs = PROBE_CMD;
+	bank_msg->buffer = NULL;
+	bank_msg->param_0 = 0;
+	bank_msg->param_1 = 0;
+	id = custom_run_algorithm(bank);
+	for (const struct flash_device *p = flash_devices; p->name ; p++) {
+		if (p->device_id == id) {
+			bank_msg->dev = p;
+			break;
+		}
+	}
+	LOG_INFO("Found custom flash device '%s' (ID 0x%08" PRIx32 ")",
+			bank_msg->dev->name, id);
+
 	if (bank->size == 0)
 		bank->size = bank_msg->dev->size_in_bytes;
 	/* if no sectors, treat whole bank as single sector */
@@ -420,15 +474,6 @@ static int custom_probe(struct flash_bank *bank)
 		sectors[sector].is_protected = 0;
 	}
 	bank->sectors = sectors;
-
-	bank_msg->cs = PROBE_CMD;
-	bank_msg->buffer = NULL;
-	bank_msg->param_0 = 0;
-	bank_msg->param_1 = 0;
-
-	id = custom_run_algorithm(bank);
-
-	LOG_INFO("Found custom flash device (ID 0x%08" PRIx32 ")", id);
 	bank_msg->probed = true;
 	return ERROR_OK;
 }

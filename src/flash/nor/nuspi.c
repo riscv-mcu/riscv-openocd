@@ -1118,6 +1118,11 @@ static int nuspi_probe(struct flash_bank *bank)
 	sectorsize = nuspi_info->dev->sectorsize ?
 		nuspi_info->dev->sectorsize : nuspi_info->dev->size_in_bytes;
 
+	if (sectorsize == 0) {
+		LOG_ERROR("flash device sector size is 0");
+		return ERROR_FAIL;
+	}
+
 	/* create and fill sectors array */
 	bank->num_sectors = nuspi_info->dev->size_in_bytes / sectorsize;
 	sectors = malloc(sizeof(struct flash_sector) * bank->num_sectors);
