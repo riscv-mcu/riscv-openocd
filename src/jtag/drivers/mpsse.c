@@ -402,8 +402,19 @@ libusb_abort:
 				// LOG_DEBUG(" Description=%s", devInfo[i].Description);
 				// LOG_DEBUG(" ftHandle=0x%p", devInfo[i].ftHandle);
 
-				if (vids && *vids != device_vid) continue;
-				if (pids && *pids != device_pid) continue;
+				/* Check if device matches any of the specified VID/PID pairs */
+				bool vid_pid_match = false;
+				if (vids) {
+					for (unsigned int j = 0; vids[j]; j++) {
+						if (device_vid == vids[j] && device_pid == pids[j]) {
+							vid_pid_match = true;
+							break;
+						}
+					}
+				} else {
+					vid_pid_match = true;
+				}
+				if (!vid_pid_match) continue;
 
 				// FIXME: check location does not work for now since libusb use a different location identifier from FTD2xx
 
