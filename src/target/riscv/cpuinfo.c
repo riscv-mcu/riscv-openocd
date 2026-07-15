@@ -43,6 +43,7 @@
 static void show_isa(uint32_t xlen, U32_CSR_MISA_Type misa,
                      U32_CSR_MCFG_INFO_Type mcfg);
 static void show_mcfg(const CPU_INFO_Group *cpuinfo);
+static void show_feature(const CPU_INFO_Group *cpuinfo);
 static void show_micfg_mdcfg(U32_CSR_MCFG_INFO_Type mcfg,
                              U32_CSR_MICFG_INFO_Type micfg,
                              U32_CSR_MDCFG_INFO_Type mdcfg);
@@ -54,15 +55,18 @@ static void show_mfiocfg(U32_CSR_MCFG_INFO_Type mcfg,
 static void show_mppicfg(U32_CSR_MCFG_INFO_Type mcfg,
                          U64_CSR_MPPICFG_INFO_Type mppicfg);
 
-static void show_prefetch_cfg(IINFO_Type *iinfo);
-static void show_isa_support(IINFO_Type *iinfo);
-static void show_mvlm_cfg(IINFO_Type *iinfo);
-static void show_flash_bus(IINFO_Type *iinfo);
-static void show_mem_region_cfg(IINFO_Type *iinfo);
-static void show_mcppi_cfg(IINFO_Type *iinfo);
-static void show_cmo(IINFO_Type *iinfo);
-static void show_performance_cfg(IINFO_Type *iinfo);
-static void show_misc_cfg(IINFO_Type *iinfo);
+static void show_prefetch_cfg(const CIF_IINFO_Type *iinfo);
+static void show_isa_support(const CIF_IINFO_Type *iinfo);
+static void show_mvlm_cfg(const CIF_IINFO_Type *iinfo);
+static void show_flash_bus(const CIF_IINFO_Type *iinfo);
+static void show_mem_region_cfg(const CIF_IINFO_Type *iinfo);
+static void show_mcppi_cfg(const CIF_IINFO_Type *iinfo);
+static void show_cmo(const CIF_IINFO_Type *iinfo);
+static void show_performance_cfg(const CIF_IINFO_Type *iinfo);
+static void show_misc_cfg(const CIF_IINFO_Type *iinfo);
+static void show_sec_cfg(const CIF_IINFO_Type *iinfo);
+static void show_mpftctl(const CIF_IINFO_Type *iinfo);
+static void show_etrace_info(const CIF_IINFO_Type *iinfo);
 
 /**
  * Convert to human readable size with option
@@ -94,6 +98,8 @@ void show_cpuinfo(const CPU_INFO_Group *cpuinfo)
     show_isa(cpuinfo->xlen, cpuinfo->misa, cpuinfo->mcfginfo);
     /* Support */
     show_mcfg(cpuinfo);
+    /* Features */
+    show_feature(cpuinfo);
     /* ILM, DLM, I/D Cache */
     show_micfg_mdcfg(cpuinfo->mcfginfo, cpuinfo->micfginfo, cpuinfo->mdcfginfo);
     /* TLB */
@@ -117,8 +123,6 @@ int get_basic_cpuinfo(const CPU_INFO_Group *cpuinfo, char *str, unsigned long le
         return -1;
     }
 
-    static char buf[BUF_SIZE] = {0}; // features string buffer
-    buf[0] = '\0'; // clear the buffer each time call this function
     char isa[EXTENSION_NUM + 1];
 
     /* construct ISA string */
@@ -130,70 +134,133 @@ int get_basic_cpuinfo(const CPU_INFO_Group *cpuinfo, char *str, unsigned long le
     }
     isa[pos] = '\0';
 
-    if (!cpuinfo->mcfg_exist) {
-        goto simple;
-    }
+    /* get features string */
+    const char *features = get_cpu_feature(cpuinfo);
 
-    /* construct features string */
-    U32_CSR_MCFG_INFO_Type mcfg = cpuinfo->mcfginfo;
-    CHECK_STRCAT_BUF(mcfg, plic, buf, "MMU, PLIC, ");
-    CHECK_STRCAT_BUF(mcfg, eclic, buf, "ECLIC, ");
-    CHECK_STRCAT_BUF(mcfg, fio, buf, "FIO, ");
-    CHECK_STRCAT_BUF(mcfg, ppi, buf, "PPI, ");
-    CHECK_STRCAT_BUF(mcfg, nice, buf, "NICE, ");
-    CHECK_STRCAT_BUF(mcfg, vnice, buf, "VNICE, ");
-    CHECK_STRCAT_BUF(mcfg, etrace, buf, "ETRACE, ");
-    CHECK_STRCAT_BUF(mcfg, ecc, buf, "ECC, ");
-    CHECK_STRCAT_BUF(mcfg, tee, buf, "TEE, ");
-    CHECK_STRCAT_BUF(mcfg, sec_mode, buf, "SMWG, ");
-
-    IINFO_ISA_SUPPORT0_Type isa_support0;
-    isa_support0.d = cpuinfo->iinfo->isa_support0;
-    CHECK_STRCAT_BUF(isa_support0, svpbmt, buf, "Svpbmt, ");
-
-    IINFO_MCMO_INFO_Type cmo;
-    cmo.d = cpuinfo->iinfo->cmo_info;
-    CHECK_STRCAT_BUF(cmo, cmo_cfg, buf, "CMO, ");
-
-    if (mcfg.b.smp) {
-        STRCAT_BUF(buf, "SMPx%d, ", cpuinfo->smpcfg.b.smp_core_num + 1);
-    }
-
-    /* show local memory and cache info */
-    U32_CSR_MICFG_INFO_Type micfg = cpuinfo->micfginfo;
-    U32_CSR_MDCFG_INFO_Type mdcfg = cpuinfo->mdcfginfo;
-    CHECK_STRCAT_BUF(mcfg, ilm, buf, "ILM-%s, ",
-                     cvt_size_opt(POW2(micfg.b.lm_size + 7), 1));
-    CHECK_STRCAT_BUF(mcfg, dlm, buf, "DLM-%s, ",
-                     cvt_size_opt(POW2(mdcfg.b.lm_size + 7), 1));
-    CHECK_STRCAT_BUF(
-        mcfg, icache, buf, "IC-%s, ",
-        cvt_size_opt(POW2(micfg.b.set + 3) * POW2(micfg.b.lsize + 2) *
-                         (micfg.b.way + 1),
-                     1));
-    CHECK_STRCAT_BUF(
-        mcfg, dcache, buf, "DC-%s, ",
-        cvt_size_opt(POW2(mdcfg.b.set + 3) * POW2(mdcfg.b.lsize + 2) *
-                         (mdcfg.b.way + 1),
-                     1));
-
-    /* remove the comma at the end */
-    if (strlen(buf) > 0 && buf[strlen(buf) - 2] == ',') {
-        buf[strlen(buf) - 2] = '\0';
-    }
-    /* Feature name must have at least 2 chars */
-    if (strlen(buf) < 2) {
+    if (strlen(features) == 0) {
         goto simple;
     }
 
     return snprintf(str, len, BASIC_CPUINFO_FMT ", Feature: %s", cpuinfo->mhartid,
                     cpuinfo->marchid.d, cpuinfo->mimpid.b.first_vernum,
                     cpuinfo->mimpid.b.mid_vernum, cpuinfo->mimpid.b.last_vernum,
-                    cpuinfo->xlen, isa, buf);
+                    cpuinfo->xlen, isa, features);
 simple:
     return snprintf(str, len, BASIC_CPUINFO_FMT, cpuinfo->mhartid, cpuinfo->marchid.d,
                     cpuinfo->mimpid.b.first_vernum, cpuinfo->mimpid.b.mid_vernum,
                     cpuinfo->mimpid.b.last_vernum, cpuinfo->xlen, isa);
+}
+
+const char *get_cpu_feature(const CPU_INFO_Group *cpuinfo)
+{
+    static char buf[BUF_SIZE] = {0}; // features string buffer
+    buf[0] = '\0'; // clear the buffer each time call this function
+
+    U32_CSR_MCFG_INFO_Type mcfg = cpuinfo->mcfginfo;
+    U32_CSR_MISA_Type misa = cpuinfo->misa;
+    U32_CSR_MARCHID_Type marchid = cpuinfo->marchid;
+    CIF_MISC_Type misc = cpuinfo->misc;
+    const CIF_ECLIC_Type *eclic = cpuinfo->eclic;
+    const CIF_IINFO_Type *iinfo = cpuinfo->iinfo;
+
+    CIF_IINFO_ISA_SUPPORT0_Type isa_support0;
+    CIF_IINFO_SEC_CFG_INFO_Type sec_cfg;
+    CIF_IINFO_PERFORMANCE_CFG1_Type performance_cfg1;
+
+    if (marchid.d == 0x100U) {
+        // N100 has no iregion info registers
+        isa_support0.d = 0;
+        sec_cfg.d = 0;
+        performance_cfg1.d = 0;
+        // eclic present with systimer
+        if (mcfg.b.eclic) {
+            STRCAT_BUF(buf, "ECLIC-v%d, ", eclic->info.b.version);
+            STRCAT_BUF(buf, "SYSTIMER, ");
+            // N100 has EXCP along with eclic
+            STRCAT_BUF(buf, "EXCP, ");
+        } else {
+            STRCAT_BUF(buf, "IRQC, ");
+            STRCAT_BUF(buf, "TIMER, ");
+        }
+        // N100 has no PMA
+    } else {
+        isa_support0.d = iinfo->isa_support0;
+        sec_cfg.d = iinfo->sec_cfg_info;
+        performance_cfg1.d = iinfo->performance_cfg1;
+        // ECLIC v1/v2
+        CHECK_STRCAT_BUF(mcfg, eclic, buf, "ECLIC-v%d, ",
+                         eclic->info.b.version);
+        // SYSTIMER is always present except N100
+        STRCAT_BUF(buf, "SYSTIMER, ");
+        // EXCP is always present except N100
+        STRCAT_BUF(buf, "EXCP, ");
+        // PMA is always present except N100
+        STRCAT_BUF(buf, "PMA, ");
+    }
+
+    // SMPCC
+    CHECK_STRCAT_BUF(mcfg, smp, buf, "SMPCC, ");
+    // PMP
+    if (misa.b.S || misa.b.U) {
+        STRCAT_BUF(buf, "PMP, ");
+    }
+    // SMEPMP
+    if (isa_support0.b.exist) {
+        CHECK_STRCAT_BUF(isa_support0, smepmp, buf, "SMEPMP, ");
+    }
+    // NICE
+    CHECK_STRCAT_BUF(mcfg, nice, buf, "NICE, ");
+    // VNICE
+    CHECK_STRCAT_BUF(mcfg, vnice, buf, "VNICE, ");
+    // ILM
+    CHECK_STRCAT_BUF(mcfg, ilm, buf, "ILM, ");
+    // DLM
+    CHECK_STRCAT_BUF(mcfg, dlm, buf, "DLM, ");
+    // ICACHE
+    CHECK_STRCAT_BUF(mcfg, icache, buf, "ICACHE, ");
+    // DCACHE
+    CHECK_STRCAT_BUF(mcfg, dcache, buf, "DCACHE, ");
+    // UMODE
+    CHECK_STRCAT_BUF(misa, U, buf, "UMODE, ");
+    // STACK_CHECK
+    if (sec_cfg.b.security) {
+        CHECK_STRCAT_BUF(sec_cfg, stack_check, buf, "STACK_CHECK, ");
+    }
+    // AMO
+    CHECK_STRCAT_BUF(misa, A, buf, "AMO, ");
+    // ECC
+    CHECK_STRCAT_BUF(mcfg, ecc, buf, "ECC, ");
+    // HPM v1/v2
+    if (performance_cfg1.b.exist) {
+        CHECK_STRCAT_BUF(performance_cfg1, hpm_ver, buf, "HPM-v%d, ",
+                         performance_cfg1.b.hpm_ver);
+    }
+    // CCM
+    if (mcfg.b.icache || mcfg.b.dcache) {
+        STRCAT_BUF(buf, "CCM, ");
+    }
+    // TEE and SMPU, if TEE is present, SMPU is also present
+    CHECK_STRCAT_BUF(mcfg, tee, buf, "TEE, SMPU, ");
+    // SSTC
+    CHECK_STRCAT_BUF(mcfg, sstc, buf, "SSTC, ");
+    // SMODE
+    CHECK_STRCAT_BUF(misa, S, buf, "SMODE, ");
+    // PLIC
+    CHECK_STRCAT_BUF(mcfg, plic, buf, "PLIC, ");
+    // PMA_MACRO
+    CHECK_STRCAT_BUF(misc, pma_macro, buf, "PMA_MACRO, ");
+    // MISALIGNED_ACCESS
+    CHECK_STRCAT_BUF(misc, misaligned_access, buf, "MISALIGNED_ACCESS, ");
+    // CIDU exist when CIDU interrupt number > 0
+    CHECK_STRCAT_BUF(misc, cidu_exist, buf, "CIDU, ");
+
+    /* remove the comma at the end */
+    size_t buf_len = strlen(buf);
+    if (buf_len > 1 && buf[buf_len - 2] == ',') {
+        buf[buf_len - 2] = '\0';
+    }
+
+    return buf;
 }
 
 static void show_isa(uint32_t xlen, U32_CSR_MISA_Type misa,
@@ -265,7 +332,7 @@ static void show_mcfg(const CPU_INFO_Group *cpuinfo)
         default:
             break;
     }
-    if (cpuinfo->misa.b.V) {
+    if (cpuinfo->vlenb >0) {
         switch (mcfg.b.vpu_degree) {
             case 0b00:
                 CIF_PRINTF(" DLEN=VLEN/2");
@@ -276,8 +343,17 @@ static void show_mcfg(const CPU_INFO_Group *cpuinfo)
             default:
                 break;
         }
+        CIF_PRINTF(" VLEN=%u", cpuinfo->vlenb * 8);
     }
     CIF_PRINTF("\r\n");
+}
+
+static void show_feature(const CPU_INFO_Group *cpuinfo)
+{
+    const char *features= get_cpu_feature(cpuinfo);
+    if (strlen(features) > 0) {
+        CIF_PRINTF("         FEATURE: %s\r\n", features);
+    }
 }
 
 static void show_micfg_mdcfg(U32_CSR_MCFG_INFO_Type mcfg,
@@ -290,6 +366,7 @@ static void show_micfg_mdcfg(U32_CSR_MCFG_INFO_Type mcfg,
         CIF_PRINTF(" %s", cvt_size(POW2(micfg.b.lm_size + 7)));
         CHECK_FIELD(micfg, lm_xonly, "execute-only");
         CHECK_FIELD(micfg, lm_ecc, "has-ecc");
+        CHECK_FIELD(micfg, i_share_dlm, "share-dlm");
         CIF_PRINTF("\r\n");
     }
     /* DLM */
@@ -385,7 +462,7 @@ static void show_iregion(const CPU_INFO_Group *cpuinfo)
     }
     /* ECLIC */
     if (mcfg.b.eclic) {
-        ECLIC_Type *eclic = cpuinfo->eclic;
+        CIF_ECLIC_Type *eclic = cpuinfo->eclic;
         U32_ECLIC_INFO_Type eclic_info = eclic->info;
         CIF_PRINTF("           ECLIC:");
         CIF_PRINTF(" VERSION=0x%x", eclic_info.b.version);
@@ -401,6 +478,12 @@ static void show_iregion(const CPU_INFO_Group *cpuinfo)
         CIF_PRINTF("         L2CACHE:");
         show_cache_info(POW2(cc_cfg.b.set), cc_cfg.b.way + 1,
                         POW2(cc_cfg.b.lsize + 2), cc_cfg.b.ecc);
+    }
+
+    // NOTE: mpasize always have, and is PA_SIZE of RTL configuration
+    // if it is 0, it means it dont have IINFO region
+    if (cpuinfo->iinfo->mpasize == 0) {
+        return;
     }
     /* IREGION INFO */
     CIF_PRINTF("     INFO-Detail:\r\n");
@@ -423,6 +506,12 @@ static void show_iregion(const CPU_INFO_Group *cpuinfo)
     show_cmo(cpuinfo->iinfo);
     /* PERFORMANCE_CFG */
     show_performance_cfg(cpuinfo->iinfo);
+    /* SEC_CFG_INFO */
+    show_sec_cfg(cpuinfo->iinfo);
+    /* MPFTCTL */
+    show_mpftctl(cpuinfo->iinfo);
+    /* ETRACE_INFO */
+    show_etrace_info(cpuinfo->iinfo);
     /* MERGEL1DCTRL and ACCESS_CTRL */
     show_misc_cfg(cpuinfo->iinfo);
 }
@@ -447,9 +536,9 @@ static void show_mppicfg(U32_CSR_MCFG_INFO_Type mcfg,
     }
 }
 
-static void show_prefetch_cfg(IINFO_Type *iinfo)
+static void show_prefetch_cfg(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_PFL1INFO_Type pfl1info;
+    CIF_IINFO_PFL1INFO_Type pfl1info;
     pfl1info.d = iinfo->pfl1info;
     if (pfl1info.b.pf_cfg) {
         CIF_PRINTF("                  prefetch: present\r\n");
@@ -469,9 +558,9 @@ static void show_prefetch_cfg(IINFO_Type *iinfo)
         }
 
         /* prefetch config */
-        IINFO_PFL1DCTRL1_Type pfl1dctrl1;
-        IINFO_PFL1DCTRL2_Type pfl1dctrl2;
-        IINFO_PFL1DCTRL3_Type pfl1dctrl3;
+        CIF_IINFO_PFL1DCTRL1_Type pfl1dctrl1;
+        CIF_IINFO_PFL1DCTRL2_Type pfl1dctrl2;
+        CIF_IINFO_PFL1DCTRL3_Type pfl1dctrl3;
         pfl1dctrl1.d = iinfo->pfl1dctrl1;
         pfl1dctrl2.d = iinfo->pfl1dctrl2;
         pfl1dctrl3.d = iinfo->pfl1dctrl3;
@@ -499,10 +588,10 @@ static void show_prefetch_cfg(IINFO_Type *iinfo)
     }
 }
 
-static void show_isa_support(IINFO_Type *iinfo)
+static void show_isa_support(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_ISA_SUPPORT0_Type isa_support0;
-    IINFO_ISA_SUPPORT1_Type isa_support1;
+    CIF_IINFO_ISA_SUPPORT0_Type isa_support0;
+    CIF_IINFO_ISA_SUPPORT1_Type isa_support1;
     isa_support0.d = iinfo->isa_support0;
     isa_support1.d = iinfo->isa_support1;
 
@@ -580,13 +669,13 @@ static void show_isa_support(IINFO_Type *iinfo)
     }
 }
 
-static void show_mvlm_cfg(IINFO_Type *iinfo)
+static void show_mvlm_cfg(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_MVLM_CFG_LO_Type mvlm_cfg_lo;
+    CIF_IINFO_MVLM_CFG_LO_Type mvlm_cfg_lo;
     mvlm_cfg_lo.d = iinfo->mvlm_cfg_lo;
     if (mvlm_cfg_lo.b.vlm) {
         CIF_PRINTF("                  vlm: present\r\n");
-        IINFO_MVLM_CFG_HI_Type mvlm_cfg_hi = iinfo->mvlm_cfg_hi;
+        CIF_IINFO_MVLM_CFG_HI_Type mvlm_cfg_hi = iinfo->mvlm_cfg_hi;
         uint64_t vlm_base =
             (uint64_t)mvlm_cfg_hi << 32 | (mvlm_cfg_lo.d & (~0x3FFULL));
         CIF_PRINTF("                      base=0x%" CIF_PRIxADDR "\r\n", (addr_t)vlm_base);
@@ -597,13 +686,13 @@ static void show_mvlm_cfg(IINFO_Type *iinfo)
     }
 }
 
-static void show_flash_bus(IINFO_Type *iinfo)
+static void show_flash_bus(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_FLASH_BASE_ADDR_LO_Type addr_lo;
+    CIF_IINFO_FLASH_BASE_ADDR_LO_Type addr_lo;
     addr_lo.d = iinfo->flash_base_addr_lo;
     if (addr_lo.b.flash) {
         CIF_PRINTF("                  flash bus: present\r\n");
-        IINFO_FLASH_BASE_ADDR_HI_Type addr_hi = iinfo->flash_base_addr_hi;
+        CIF_IINFO_FLASH_BASE_ADDR_HI_Type addr_hi = iinfo->flash_base_addr_hi;
         uint64_t flash_base =
             (uint64_t)addr_hi << 32 | (addr_lo.d & (~0x3FFULL));
         CIF_PRINTF("                      base=0x%" CIF_PRIxADDR "\r\n", (addr_t)flash_base);
@@ -614,14 +703,14 @@ static void show_flash_bus(IINFO_Type *iinfo)
     }
 }
 
-static void show_mem_region_cfg(IINFO_Type *iinfo)
+static void show_mem_region_cfg(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_MEM_REGION_CFG_LO_Type region_lo;
+    CIF_IINFO_MEM_REGION_CFG_LO_Type region_lo;
     uint64_t region_base;
     region_lo.d = iinfo->mem_region0_cfg_lo;
     if (region_lo.b.exist) {
         CIF_PRINTF("                  mem_region0: present\r\n");
-        IINFO_MEM_REGION_CFG_HI_Type region_hi = iinfo->mem_region0_cfg_hi;
+        CIF_IINFO_MEM_REGION_CFG_HI_Type region_hi = iinfo->mem_region0_cfg_hi;
         region_base = (uint64_t)region_hi << 32 | (region_lo.d & (~0x3FFULL));
         if (region_lo.b.mem_region_ena) {
             CIF_PRINTF("                      status: enable\r\n");
@@ -637,7 +726,7 @@ static void show_mem_region_cfg(IINFO_Type *iinfo)
     region_lo.d = iinfo->mem_region1_cfg_lo;
     if (region_lo.b.exist) {
         CIF_PRINTF("                  mem_region1: present\r\n");
-        IINFO_MEM_REGION_CFG_HI_Type region_hi = iinfo->mem_region1_cfg_hi;
+        CIF_IINFO_MEM_REGION_CFG_HI_Type region_hi = iinfo->mem_region1_cfg_hi;
         region_base = (uint64_t)region_hi << 32 | (region_lo.d & (~0x3FFULL));
         if (region_lo.b.mem_region_ena) {
             CIF_PRINTF("                      status: enable\r\n");
@@ -652,13 +741,13 @@ static void show_mem_region_cfg(IINFO_Type *iinfo)
     }
 }
 
-static void show_mcppi_cfg(IINFO_Type *iinfo)
+static void show_mcppi_cfg(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_MCPPI_CFG_LO_Type mcppi_lo;
+    CIF_IINFO_MCPPI_CFG_LO_Type mcppi_lo;
     mcppi_lo.d = iinfo->mcppi_cfg_lo;
     if (mcppi_lo.b.exist) {
         CIF_PRINTF("                  cppi: present\r\n");
-        IINFO_MCPPI_CFG_HI_Type mcppi_hi = iinfo->mcppi_cfg_hi;
+        CIF_IINFO_MCPPI_CFG_HI_Type mcppi_hi = iinfo->mcppi_cfg_hi;
         uint64_t mcppi_base =
             (uint64_t)mcppi_hi << 32 | (mcppi_lo.d & (~0x3FFULL));
         if (mcppi_lo.b.cppi_ena) {
@@ -674,9 +763,9 @@ static void show_mcppi_cfg(IINFO_Type *iinfo)
     }
 }
 
-static void show_cmo(IINFO_Type *iinfo)
+static void show_cmo(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_MCMO_INFO_Type cmo_info;
+    CIF_IINFO_MCMO_INFO_Type cmo_info;
     cmo_info.d = iinfo->cmo_info;
     if (cmo_info.b.cmo_cfg) {
         CIF_PRINTF("                  cmo: present\r\n");
@@ -691,10 +780,10 @@ static void show_cmo(IINFO_Type *iinfo)
     }
 }
 
-static void show_performance_cfg(IINFO_Type *iinfo)
+static void show_performance_cfg(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_PERFORMANCE_CFG0_Type performance_cfg0;
-    IINFO_PERFORMANCE_CFG1_Type performance_cfg1;
+    CIF_IINFO_PERFORMANCE_CFG0_Type performance_cfg0;
+    CIF_IINFO_PERFORMANCE_CFG1_Type performance_cfg1;
     performance_cfg0.d = iinfo->performance_cfg0;
     performance_cfg1.d = iinfo->performance_cfg1;
 
@@ -734,19 +823,86 @@ static void show_performance_cfg(IINFO_Type *iinfo)
     }
 }
 
-static void show_misc_cfg(IINFO_Type *iinfo)
+static void show_misc_cfg(const CIF_IINFO_Type *iinfo)
 {
-    IINFO_MERGEL1DCTRL_Type mergel1dctrl;
-    IINFO_ACCESS_CTRL_Type access_ctrl;
+    CIF_IINFO_MERGEL1DCTRL_Type mergel1dctrl;
+    CIF_IINFO_SAFETY_CTRL_Type safety_ctrl;
+    CIF_IINFO_ACCESS_CTRL_Type access_ctrl;
     mergel1dctrl.d = iinfo->mergel1dctrl;
+    safety_ctrl.d = iinfo->safety_ctrl;
     access_ctrl.d = iinfo->access_ctrl;
     CIF_PRINTF("                  misc: \r\n");
     SHOW_VALUE(mergel1dctrl, ws_tmout_max);
     SHOW_VALUE(mergel1dctrl, nc_tmout_max);
     SHOW_VALUE(mergel1dctrl, dev_store_early_ret);
+    SHOW_VALUE(safety_ctrl, reg_prot_chck_en);
     SHOW_VALUE(access_ctrl, pf_access);
     SHOW_VALUE(access_ctrl, cache_csr_access);
     SHOW_VALUE(access_ctrl, pma_csr_access);
+
+    uint32_t ecc_inj_addr_lo = iinfo->ecc_inj_addr_lo;
+    uint32_t ecc_inj_addr_hi = iinfo->ecc_inj_addr_hi;
+    uint64_t ecc_inj_addr = (uint64_t)ecc_inj_addr_hi << 32 | ecc_inj_addr_lo;
+    CIF_PRINTF("                      ecc_inj_addr=0x%" CIF_PRIxADDR "\r\n", (addr_t)ecc_inj_addr);
+    CIF_IINFO_ECC_INJ_WAY_Type ecc_inj_way;
+    ecc_inj_way.d = iinfo->ecc_inj_way;
+    SHOW_VALUE(ecc_inj_way, inject_way);
+    SHOW_VALUE(ecc_inj_way, security_mode);
+    SHOW_VALUE(ecc_inj_way, precise_ecc_inject);
+}
+
+static void show_sec_cfg(const CIF_IINFO_Type *iinfo)
+{
+    CIF_IINFO_SEC_CFG_INFO_Type sec_cfg;
+    sec_cfg.d = iinfo->sec_cfg_info;
+    if (sec_cfg.b.security) {
+        CIF_PRINTF("                  sec_cfg: present\r\n");
+        SHOW_VALUE(sec_cfg, sec_debug);
+        SHOW_VALUE(sec_cfg, arcg);
+        SHOW_VALUE(sec_cfg, remap);
+        SHOW_VALUE(sec_cfg, parity_protection);
+        SHOW_VALUE(sec_cfg, trwb);
+        SHOW_VALUE(sec_cfg, ppi_lock);
+        SHOW_VALUE(sec_cfg, cct);
+        SHOW_VALUE(sec_cfg, cache_froze);
+        SHOW_VALUE(sec_cfg, sec_mon_bus);
+        SHOW_VALUE(sec_cfg, exe_monitor);
+        SHOW_VALUE(sec_cfg, key_state_clear);
+        SHOW_VALUE(sec_cfg, data_polarity);
+        SHOW_VALUE(sec_cfg, random_ins_insert);
+        SHOW_VALUE(sec_cfg, power_disturb);
+        SHOW_VALUE(sec_cfg, stack_check);
+        SHOW_VALUE(sec_cfg, bjp_random_flush);
+        SHOW_VALUE(sec_cfg, parity_mode);
+        SHOW_VALUE(sec_cfg, mpu_num);
+        SHOW_VALUE(sec_cfg, bbox_num);
+    } else {
+        CIF_PRINTF("                  sec_cfg: absent\r\n");
+    }
+}
+
+static void show_mpftctl(const CIF_IINFO_Type *iinfo)
+{
+    CIF_IINFO_MPFTCTL_Type mpftctl;
+    mpftctl.d = iinfo->mpftctl;
+    CIF_PRINTF("                  mpftctl: \r\n");
+    SHOW_VALUE(mpftctl, mpflvl);
+    SHOW_VALUE(mpftctl, mpfena);
+}
+
+static void show_etrace_info(const CIF_IINFO_Type *iinfo)
+{
+    CIF_IINFO_ETRACE_INFO_Type etrace_info;
+    etrace_info.d = iinfo->etrace_info;
+    if (etrace_info.b.exist) {
+        CIF_PRINTF("                  etrace_info: present\r\n");
+        CIF_PRINTF("                      version=%u.%u\r\n",
+                   etrace_info.b.support_version_major,
+                   etrace_info.b.support_version_minor);
+        SHOW_VALUE(etrace_info, data_trace);
+    } else {
+        CIF_PRINTF("                  etrace_info: absent\r\n");
+    }
 }
 
 static char *cvt_size_opt(uint32_t size, int lite)

@@ -142,8 +142,8 @@ int nuclei_get_cpuinfo(struct target *target, NUCLEI_CPUINFO *cpu)
             cpuinfo->mirgbinfo.d = (uint64_t)regval;
         }
 		uint64_t iregion_base = (uint64_t)(cpuinfo->mirgbinfo.d) & (~0x3FFULL);
-        memset(&cpu->iinfo, 0 ,sizeof(IINFO_Type));
-		target_read_memory(target, iregion_base, 4, sizeof(IINFO_Type) / 4, (uint8_t *)&cpu->iinfo);
+        memset(&cpu->iinfo, 0 ,sizeof(CIF_IINFO_Type));
+		target_read_memory(target, iregion_base, 4, sizeof(CIF_IINFO_Type) / 4, (uint8_t *)&cpu->iinfo);
         cpuinfo->iregion_base = iregion_base;
         if (cpuinfo->mcfginfo.b.smp) {
 			target_read_memory(target, (iregion_base + CPUINFO_IRG_SMP_OFS + 0x4), 4, 1, (uint8_t *)&cpuinfo->smpcfg.d);
@@ -152,8 +152,8 @@ int nuclei_get_cpuinfo(struct target *target, NUCLEI_CPUINFO *cpu)
 			target_read_memory(target, (iregion_base + CPUINFO_IRG_SMP_OFS + 0x8), 4, 1, (uint8_t *)&cpuinfo->cccfg.d);
         }
         if (cpuinfo->mcfginfo.b.eclic) {
-            memset(&cpu->eclic, 0, sizeof(ECLIC_Type));
-			target_read_memory(target, (iregion_base + CPUINFO_IRG_ECLIC_OFS), 4, sizeof(ECLIC_Type) / 4, (uint8_t *)&cpu->eclic);
+            memset(&cpu->eclic, 0, sizeof(CIF_ECLIC_Type));
+			target_read_memory(target, (iregion_base + CPUINFO_IRG_ECLIC_OFS), 4, sizeof(CIF_ECLIC_Type) / 4, (uint8_t *)&cpu->eclic);
 	    }
     }
     if (cpuinfo->mcfginfo.b.ppi) {
