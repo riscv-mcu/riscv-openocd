@@ -269,6 +269,11 @@ static int examine_mtopi(struct target *target)
 {
 	RISCV_INFO(r);
 
+	/* Initialize cache entry for marchid before reading */
+	int res = init_cache_entry(target, GDB_REGNO_CSR0 + CSR_MARCHID);
+	if (res != ERROR_OK)
+		return res;
+
 	riscv_reg_t marchid;
 	if (riscv_reg_get(target, &marchid, GDB_REGNO_CSR0 + CSR_MARCHID) == ERROR_OK) {
 		if (marchid == 0x100) {
@@ -282,7 +287,7 @@ static int examine_mtopi(struct target *target)
 	r->mtopi_readable = true;
 	r->mtopei_readable = true;
 
-	int res = assume_reg_exist(target, GDB_REGNO_MTOPI);
+	res = assume_reg_exist(target, GDB_REGNO_MTOPI);
 	if (res != ERROR_OK)
 		return res;
 	res = assume_reg_exist(target, GDB_REGNO_MTOPEI);
