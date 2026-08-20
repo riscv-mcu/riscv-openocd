@@ -214,7 +214,10 @@ deploy-openocd:
     - env::shell
     - user::xl_ci
   rules:
-    # manual trigger this deploy job on not merge request pipeline
+    # auto deploy on nuclei/2025 branch pipeline
+    - if: '$CI_COMMIT_BRANCH == "nuclei/2025"'
+      when: on_success
+    # manual trigger on other non-MR pipelines
     - if: '$CI_PIPELINE_SOURCE != "merge_request_event"'
       when: manual
   dependencies:
