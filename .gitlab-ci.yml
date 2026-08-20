@@ -208,18 +208,17 @@ test-openocd:
 deploy-openocd:
   stage: deploy
   interruptible: true
-  resource_group: deploy
   allow_failure: true
+  resource_group: deploy
   tags:
     - env::shell
     - user::xl_ci
   rules:
-    # auto deploy on nuclei/2025 branch pipeline
-    - if: '$CI_COMMIT_BRANCH == "nuclei/2025"'
-      when: on_success
-    # manual trigger on other non-MR pipelines
-    - if: '$CI_PIPELINE_SOURCE != "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       when: manual
+    - if: '$CI_COMMIT_BRANCH == "nuclei/2025" && $CI_PIPELINE_SOURCE != "merge_request_event"'
+      when: on_success
+    - when: manual
   dependencies:
     - build-openocd
   script:
@@ -275,8 +274,9 @@ link-openocd:
     - user::xl_ci
   rules:
     # manual trigger this deploy job on not merge request pipeline
-    - if: '$CI_PIPELINE_SOURCE != "merge_request_event"'
-      when: manual
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - when: manual
   # link-openocd job require deploy-openocd job executed before
   needs:
       - job: deploy-openocd
