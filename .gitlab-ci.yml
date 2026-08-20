@@ -32,7 +32,7 @@ check-codestyle:
   tags:
     - env::shell
     # host::whss1 may build fail for win32 Error: invalid command name "cc-check-inline"
-    - host::whss4
+    - host::whss9
   script:
     - echo "Check code style..."
     - |
@@ -56,7 +56,7 @@ build-openocd:
     - env::shell
     - user::xl_ci
     # host::whss1 may build fail for win32 Error: invalid command name "cc-check-inline"
-    - host::whss4
+    - host::whss9
   cache:
     paths:
       - Work/cache
@@ -83,7 +83,9 @@ build-openocd:
       if [ -d Work/openocd-build ] ; then
         ls -l Work/openocd-build
         echo "Cleanup existing Work/openocd-build to make a clean build environment!"
-        podman run -t -v$(pwd)/Work:/Work docker.io/ilegeul/centos:6-xbb-v2.2 rm -rf /Work/openocd-build
+        RUNTIME=$(command -v podman || command -v docker)
+        TTY_FLAG=$([ -t 0 ] && echo "-t" || echo "")
+        ${RUNTIME} run ${TTY_FLAG} -v$(pwd)/Work:/Work docker.io/ilegeul/centos:6-xbb-v2.2 rm -rf /Work/openocd-build
       fi
     - |
       mkdir -p $PWD/Work
@@ -145,7 +147,9 @@ build-openocd:
           mv Work/openocd-build/deploy .
         fi
         echo "Failed to build OpenOCD, and will cleanup Work/openocd-build folder!"
-        podman run -t -v$(pwd)/Work:/Work docker.io/ilegeul/centos:6-xbb-v2.2 rm -rf /Work/openocd-build
+        RUNTIME=$(command -v podman || command -v docker)
+        TTY_FLAG=$([ -t 0 ] && echo "-t" || echo "")
+        ${RUNTIME} run ${TTY_FLAG} -v$(pwd)/Work:/Work docker.io/ilegeul/centos:6-xbb-v2.2 rm -rf /Work/openocd-build
         exit 1
       }
       popd
@@ -165,7 +169,9 @@ build-openocd:
       mv Work/openocd-build/deploy .
     - |
       echo "Cleanup Work/openocd-build"
-      podman run -t -v$(pwd)/Work:/Work docker.io/ilegeul/centos:6-xbb-v2.2 rm -rf /Work/openocd-build
+      RUNTIME=$(command -v podman || command -v docker)
+      TTY_FLAG=$([ -t 0 ] && echo "-t" || echo "")
+      ${RUNTIME} run ${TTY_FLAG} -v$(pwd)/Work:/Work docker.io/ilegeul/centos:6-xbb-v2.2 rm -rf /Work/openocd-build
     - echo "OpenOCD successfully built."
 
   artifacts:
