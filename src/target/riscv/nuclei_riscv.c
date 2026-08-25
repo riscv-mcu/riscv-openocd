@@ -917,9 +917,16 @@ COMMAND_HANDLER(handle_trace_config_command)
 		if ((trace_core_mask & (0x1 << i)) == 0) continue;
 		trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
 		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp | (0x1 << 11) | (0x1 << 2));
-		// set srcid
-		trace_read_reg(target, TRACE_TE + TRTEINSTFEATURES + i * 0x1000, &tmp);
-		trace_write_reg(target, TRACE_TE + TRTEINSTFEATURES + i * 0x1000, (tmp & ~(0xFFF << 16)) | (i << 16));
+		// set srcid only when multi-core
+		if ((trace_core_mask & (trace_core_mask - 1)) == 0) {
+			trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp | (0x1 << 15));
+		} else {
+			trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp & ~(0x1 << 15));
+			trace_read_reg(target, TRACE_TE + TRTEINSTFEATURES + i * 0x1000, &tmp);
+			trace_write_reg(target, TRACE_TE + TRTEINSTFEATURES + i * 0x1000, (tmp & ~(0xFFF << 16)) | (i << 16));
+		}
 		// datatrace
 		trace_read_reg(target, TRACE_TE + TRTEDATACONTROL + i * 0x1000, &tmp);
 		if (0 == (tmp & 0x1))
