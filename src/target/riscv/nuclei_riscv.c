@@ -685,6 +685,7 @@ COMMAND_HANDLER(handle_etrace_info_command)
 	else
 		command_print(CMD, "used %d%% from 0x%" PRIx64 " to 0x%" PRIx64, (end_offset * 100) / buffer_size, \
 			buffer_addr, buffer_addr + end_offset);
+	command_print(CMD, "Decoder Command:dqr -t demo.bin -e demo.elf [-srcid=n(default is 0)] [-tdasize=8(default)/32/64] [-decodemode=0(default)/1/2/3]");
 
 	return ERROR_OK;
 }
@@ -754,6 +755,7 @@ static const struct command_registration etrace_command_handlers[] = {
 #define TRFUNNELCONTROL		(0x0)
 #define TRFUNNELDISINPUT	(0x8)
 #define TRTSCONTROL		(0x40)
+#define TRTRACEBUNDLEVERSION	(0xe00)
 //TRACE RAM Registers
 #define TRACE_RAM		(0x1000)
 #define TRRAMCONTROL		(0x0)
@@ -772,6 +774,8 @@ static const struct command_registration etrace_command_handlers[] = {
 #define TRTSCONTROL		(0x40)
 #define TRTEFILTER0CONTROL	(0x400)
 #define TRTEFILTER0MATCHDATA	(0x418)
+#define TRPATAMETER0		(0xe00)
+#define TRPATAMETER1		(0xe04)
 
 static target_addr_t tracebundle_addr = 0xa5a5a5a5;
 static target_addr_t trace_ram_addr = 0xa5a5a5a5;
@@ -779,6 +783,8 @@ static target_addr_t trace_ram_size;
 static target_addr_t end_ram_addr;
 static uint32_t trace_core_num = 0;
 static uint32_t trace_core_mask = 0;
+static uint32_t timestamp = 0;
+static uint32_t datatrace = 0;
 
 #define CHECK_TRACE_CONFIGURED()	{ \
 		if (tracebundle_addr == 0xa5a5a5a5) { \
@@ -812,7 +818,7 @@ static int trace_write_reg(struct target *target, uint32_t offset, uint32_t valu
 
 COMMAND_HANDLER(handle_trace_config_command)
 {
-	uint32_t wrap,timestamp,timestamp_div,datatrace,noaddr,nodata,load,store,tmp;
+	uint32_t wrap,timestamp_div,noaddr,nodata,load,store,tmp;
 
 	if (CMD_ARGC != 0x7)
 		return ERROR_COMMAND_SYNTAX_ERROR;
@@ -1142,6 +1148,50 @@ COMMAND_HANDLER(handle_trace_info_command)
 		else
 			tmp = ((end_ram_addr - trace_ram_addr) * 100) / trace_ram_size;
 		command_print(CMD, "used %d%% from 0x%" PRIx64 " to 0x%" PRIx64, tmp, trace_ram_addr, end_ram_addr);
+	}
+	uint32_t index_width, tssize, contextsize, decodemode;
+	trace_read_reg(target, TRACE_FUNNEL + TRTRACEBUNDLEVERSION, &tmp);
+	if (tmp < 0x10100) {
+		decodemode = 0x10;
+	} else if (tmp < 0x10400) {
+		decodemode = 0x11;
+	} else {
+		decodemode = 0x12;
+	}
+	if ((trace_core_mask & (trace_core_mask - 1)) != 0) {
+		decodemode |= 0x1 << 8;//has-srcid
+	}
+	if (timestamp != 0) {
+		decodemode |= 0x1 << 9;//has-timestamp
+	}
+	if (datatrace & 0x1) {
+		decodemode |= 0x6F << 10;
+		if ((datatrace >> 3) & 0x1) {
+			decodemode &= !(0x1 << 10);//no-load
+		}
+		if ((datatrace >> 4) & 0x1) {
+			decodemode &= !(0x1 << 11);//no-store
+		}
+		if ((datatrace >> 2) & 0x1) {
+			decodemode &= !(0x1 << 15);//no-value
+		}
+		if ((datatrace >> 1) & 0x1) {
+			decodemode &= !(0x1 << 16);//no-addr
+		}
+	}
+	for (int i = 0;i < trace_core_num;i++) {
+		if ((trace_core_mask & (0x1 << i)) == 0) continue;
+		trace_read_reg(target, TRACE_TE + TRPATAMETER0 + i * 0x1000, &tmp);
+		index_width = (tmp >> 16) & 0xFFFF;
+		trace_read_reg(target, TRACE_TE + TRPATAMETER1 + i * 0x1000, &tmp);
+		tssize = tmp & 0xFF;
+		contextsize = (tmp >> 8) & 0xFF;
+		command_print_sameline(CMD, "Core%d Decoder Command:dqr -t demo.bin -e demo.elf ", i);
+		command_print_sameline(CMD, "-srcid=0x%x ", i);
+		command_print_sameline(CMD, "-datatrace=0x%x ", index_width);
+		command_print_sameline(CMD, "-tssize=0x%x ", tssize);
+		command_print_sameline(CMD, "-contextsize=0x%x ", contextsize);
+		command_print(CMD, "-decodemode=0x%x", decodemode);
 	}
 
 	return ERROR_OK;
