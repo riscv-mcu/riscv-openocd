@@ -840,10 +840,13 @@ COMMAND_HANDLER(handle_trace_config_command)
 	store = ((datatrace >> 4) & 0x1) ? 0 : 1;
 
 	// set active
+	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, 0x00);
 	trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
 	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, tmp | 0x1);
+	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, 0x00);
 	trace_read_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, &tmp);
 	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, tmp | 0x1);
+	trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, 0x00);
 	trace_read_reg(target, TRACE_FUNNEL + TRTSCONTROL, &tmp);
 	trace_write_reg(target, TRACE_FUNNEL + TRTSCONTROL, tmp | 0x1);
 	// Read Core Number
@@ -857,8 +860,10 @@ COMMAND_HANDLER(handle_trace_config_command)
 	trace_write_reg(target,TRACE_FUNNEL + TRFUNNELDISINPUT, 0x0);
 	for (int i = 0;i < trace_core_num;i++) {
 		if ((trace_core_mask & (0x1 << i)) == 0) continue;
+		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, 0x00);
 		trace_read_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, &tmp);
 		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, tmp | 0x1);
+		trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, 0x00);
 		trace_read_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, &tmp);
 		trace_write_reg(target, TRACE_TE + TRTSCONTROL + i * 0x1000, tmp | 0x1);
 	}
@@ -993,7 +998,6 @@ COMMAND_HANDLER(handle_trace_stop_command)
 			}
 			wait_idle -= 1;
 		} while ((tmp & 0x8) != 0x8);
-		trace_write_reg(target, TRACE_TE + TRTECONTROL + i * 0x1000, 0x0);
 	}
 	trace_read_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, &tmp);
 	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, tmp & ~(0x1 << 1));
@@ -1006,7 +1010,6 @@ COMMAND_HANDLER(handle_trace_stop_command)
 		}
 		wait_idle -= 1;
 	} while ((tmp & 0x8) != 0x8);
-	trace_write_reg(target, TRACE_FUNNEL + TRFUNNELCONTROL, 0x0);
 	trace_read_reg(target, TRACE_RAM + TRRAMCONTROL, &tmp);
 	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, tmp & ~(0x1 << 1));
 	wait_idle = 0x100;
@@ -1018,7 +1021,6 @@ COMMAND_HANDLER(handle_trace_stop_command)
 		}
 		wait_idle -= 1;
 	} while ((tmp & 0x8) != 0x8);
-	trace_write_reg(target, TRACE_RAM + TRRAMCONTROL, 0x0);
 
 	return ERROR_OK;
 }
