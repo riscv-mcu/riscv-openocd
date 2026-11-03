@@ -6,6 +6,21 @@ If the tool version and documentation version not match, please take care.
 
 **Below is the changelog for Nuclei OpenOCD.**
 
+## 2026.10
+
+This release is based on **2025.10** version with some new features and bug fixes introduced.
+
+* Add `nuclei trace` command group for trace-bundle instruction-trace and data-trace support
+* Update `nuclei etrace` command group for ATB2AXI instruction-trace support
+* Update `nuclei cpuinfo` command implementation using nuclei-sdk same source code to provide same behavior
+* Sync nuclei custom CSR support for eclic_v2
+* Modify N100 `vlenb`/`mtopi`/`mtopei` display
+* Add flash support for HG25Q16B, GD25LE16E, GD25LQ128E, MX25R8035F, XTD25W02A, XTD25W04A, GT25Q16A, GT25Q32EB, GT25Q64EB
+* Add dummy flash driver to support automatic hardware breakpoint placement in specified address ranges
+* Update custom flash driver with `wrsize` support, flash-id based device matching, and fix memory issues in custom.c and nuspi.c
+* Fix FTD2xx vendor IDs and product IDs to resolve matching issues when multiple FTDI devices are present
+* Modify GD32VF103 IDCODE to correctly display chip information on the target
+
 ## 2025.10
 
 This release is based on the same code base of **2025.02**, but do some new feature and bugfixes.
