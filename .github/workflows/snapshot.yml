@@ -16,7 +16,7 @@ jobs:
       - name: Install needed packages
         run: |
           sudo apt-get update
-          sudo apt-get install autotools-dev autoconf automake libtool pkg-config cmake texinfo texlive g++-mingw-w64-i686 unzip
+          sudo apt-get install autotools-dev autoconf automake libtool pkg-config cmake texinfo texlive g++-mingw-w64-i686 unzip p7zip-full
       - name: Checkout Code
         uses: actions/checkout@v4
       - name: Fetch submodules
@@ -82,14 +82,27 @@ jobs:
         # archive from gitlab.zapb.de, which is unreachable from runners.
         run: echo "LIBJAYLINK_SRC=$PWD/src/jtag/drivers/libjaylink" >> $GITHUB_ENV
       - name: Prepare FTD2XX
+        # ftdichip.com sits behind a Cloudflare challenge that answers every
+        # automated download with "403 Forbidden", so the CDM package is taken
+        # from a mirror instead. The package and the extracted files are
+        # pinned by checksum to make sure the content cannot change unnoticed.
         env:
           FTD2XX_VER: 2.12.36.4
+          # CDM212364_Setup.zip is the official installer of CDM v2.12.36.4
+          FTD2XX_URL: https://media.githubusercontent.com/media/ArmSoM/rk3506-rkr4.2-sdk/main/rtos/bsp/rockchip/tools/CDM212364_Setup.zip
+          FTD2XX_ZIP_SHA256: 10c399ac784d2b68b1bb2ba598bab7fe00cfdfd267b4cc14a3e3240fe9499fb1
+          FTD2XX_LIB_SHA256: 3e9c6d57c4b3563e04b20be5adc419a0854d3a2abad93a39f49b973b52475314
         run: |
           mkdir -p $DL_DIR && cd $DL_DIR
-          FTD2XX_NAME=${FTD2XX_VER}
           FTD2XX_FOLDER=ftd2XX-${FTD2XX_VER}
-          wget "https://ftdichip.com/wp-content/uploads/2023/09/CDM-v${FTD2XX_VER}-WHQL-Certified.zip"
-          unzip -d ${FTD2XX_FOLDER} CDM-v${FTD2XX_VER}-WHQL-Certified.zip
+          rm -rf ${FTD2XX_FOLDER} cdm.zip
+          # The installer embeds the i386/amd64 directories (with ftd2xx.lib)
+          # that contrib/cross-build.sh copies into the sysroot.
+          curl -fsSL --retry 5 --retry-delay 10 -o cdm.zip "${FTD2XX_URL}"
+          echo "${FTD2XX_ZIP_SHA256}  cdm.zip" | sha256sum -c -
+          unzip -q -d ${FTD2XX_FOLDER} cdm.zip
+          7z x -y "${FTD2XX_FOLDER}"/CDM*_Setup.exe -o"${FTD2XX_FOLDER}" > /dev/null
+          echo "${FTD2XX_LIB_SHA256}  ${FTD2XX_FOLDER}/i386/ftd2xx.lib" | sha256sum -c -
           echo "FTD2XX_SRC=$PWD/${FTD2XX_FOLDER}" >> $GITHUB_ENV
       - name: Package OpenOCD for windows
         env:
