@@ -6,6 +6,8 @@ If the tool version and documentation version not match, please take care.
 
 **Below is the changelog for Nuclei OpenOCD.**
 
+> See https://doc.nucleisys.com/nuclei_tools/openocd/intro.html#changelog
+
 ## 2026.10
 
 This release is based on **2025.10** version with some new features and bug fixes introduced.
