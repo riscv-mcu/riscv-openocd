@@ -86,6 +86,28 @@ jobs:
           make -j"$(nproc 2> /dev/null || sysctl -n hw.ncpu)"
           make install
 
+      - name: Fetch submodules
+        run: |
+          # Change gitlab.zapb.de/libjaylink to repo.or.cz/libjaylink to avoid
+          # bad network issue, same as .gitlab-ci.yml
+          sed -i 's|gitlab.zapb.de/libjaylink|repo.or.cz|g' .gitmodules
+          git submodule sync
+          # retry submodule update in max_retries times
+          max_retries=3
+          attempt=1
+          while [ $attempt -le $max_retries ]; do
+              git submodule update --force --recursive --init && break || {
+                  echo "Attempt $attempt failed, retrying..."
+                  attempt=$((attempt + 1))
+                  sleep 1
+              }
+          done
+          if [ $attempt -gt $max_retries ]; then
+              echo "Failed to update submodules after $max_retries attempts."
+              exit 1
+          fi
+          git submodule status
+
       - name: Build OpenOCD
         run: |
           #cd riscv-openocd

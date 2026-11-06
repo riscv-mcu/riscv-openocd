@@ -16,6 +16,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install clang gcc-multilib
+      - name: Fetch submodules
+        run: |
+          # Change gitlab.zapb.de/libjaylink to repo.or.cz/libjaylink to avoid
+          # bad network issue, same as .gitlab-ci.yml
+          sed -i 's|gitlab.zapb.de/libjaylink|repo.or.cz|g' .gitmodules
+          git submodule sync
+          # retry submodule update in max_retries times
+          max_retries=3
+          attempt=1
+          while [ $attempt -le $max_retries ]; do
+              git submodule update --force --recursive --init && break || {
+                  echo "Attempt $attempt failed, retrying..."
+                  attempt=$((attempt + 1))
+                  sleep 1
+              }
+          done
+          if [ $attempt -gt $max_retries ]; then
+              echo "Failed to update submodules after $max_retries attempts."
+              exit 1
+          fi
+          git submodule status
       - run: ./bootstrap
       - run: ./configure --enable-remote-bitbang --enable-jtag_vpi --disable-target64 --disable-werror
       - run: make -j`nproc`
@@ -41,6 +62,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install libusb-1.0-0 libusb-1.0-0-dev
           sudo apt-get install libftdi1-2 libftdi1-dev
+      - name: Fetch submodules
+        run: |
+          # Change gitlab.zapb.de/libjaylink to repo.or.cz/libjaylink to avoid
+          # bad network issue, same as .gitlab-ci.yml
+          sed -i 's|gitlab.zapb.de/libjaylink|repo.or.cz|g' .gitmodules
+          git submodule sync
+          # retry submodule update in max_retries times
+          max_retries=3
+          attempt=1
+          while [ $attempt -le $max_retries ]; do
+              git submodule update --force --recursive --init && break || {
+                  echo "Attempt $attempt failed, retrying..."
+                  attempt=$((attempt + 1))
+                  sleep 1
+              }
+          done
+          if [ $attempt -gt $max_retries ]; then
+              echo "Failed to update submodules after $max_retries attempts."
+              exit 1
+          fi
+          git submodule status
       - run: ./bootstrap
       - run: ./configure --enable-remote-bitbang --enable-jtag_vpi --enable-ftdi-cjtag --enable-jlink --enable-ftdi --disable-werror
       - run: make -j`nproc`

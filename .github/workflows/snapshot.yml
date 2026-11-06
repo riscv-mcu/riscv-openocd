@@ -19,6 +19,27 @@ jobs:
           sudo apt-get install autotools-dev autoconf automake libtool pkg-config cmake texinfo texlive g++-mingw-w64-i686 unzip
       - name: Checkout Code
         uses: actions/checkout@v4
+      - name: Fetch submodules
+        run: |
+          # Change gitlab.zapb.de/libjaylink to repo.or.cz/libjaylink to avoid
+          # bad network issue, same as .gitlab-ci.yml
+          sed -i 's|gitlab.zapb.de/libjaylink|repo.or.cz|g' .gitmodules
+          git submodule sync
+          # retry submodule update in max_retries times
+          max_retries=3
+          attempt=1
+          while [ $attempt -le $max_retries ]; do
+              git submodule update --force --recursive --init && break || {
+                  echo "Attempt $attempt failed, retrying..."
+                  attempt=$((attempt + 1))
+                  sleep 1
+              }
+          done
+          if [ $attempt -gt $max_retries ]; then
+              echo "Failed to update submodules after $max_retries attempts."
+              exit 1
+          fi
+          git submodule status
       - run: ./bootstrap
       - name: Prepare libusb1
         env:
@@ -57,15 +78,9 @@ jobs:
           tar -xzf ${CAPSTONE_VER}.tar.gz
           echo "CAPSTONE_SRC=$PWD/capstone-${CAPSTONE_VER}" >> $GITHUB_ENV
       - name: Prepare libjaylink
-        env:
-          LIBJAYLINK_VER: 0.3.1
-        run: |
-          mkdir -p $DL_DIR && cd $DL_DIR
-          wget https://gitlab.zapb.de/libjaylink/libjaylink/-/archive/${LIBJAYLINK_VER}/libjaylink-${LIBJAYLINK_VER}.tar.gz
-          tar -xzf libjaylink-${LIBJAYLINK_VER}.tar.gz
-          cd libjaylink-${LIBJAYLINK_VER}
-          ./autogen.sh
-          echo "LIBJAYLINK_SRC=$PWD" >> $GITHUB_ENV
+        # Use the submodule already fetched above instead of downloading an
+        # archive from gitlab.zapb.de, which is unreachable from runners.
+        run: echo "LIBJAYLINK_SRC=$PWD/src/jtag/drivers/libjaylink" >> $GITHUB_ENV
       - name: Prepare FTD2XX
         env:
           FTD2XX_VER: 2.12.36.4
