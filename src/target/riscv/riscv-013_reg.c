@@ -274,15 +274,6 @@ static int examine_mtopi(struct target *target)
 	if (res != ERROR_OK)
 		return res;
 
-	riscv_reg_t marchid;
-	if (riscv_reg_get(target, &marchid, GDB_REGNO_CSR0 + CSR_MARCHID) == ERROR_OK) {
-		if (marchid == 0x100) {
-			r->mtopi_readable = false;
-			r->mtopei_readable = false;
-			return ERROR_OK;
-		}
-	}
-
 	/* Assume the registers exist */
 	r->mtopi_readable = true;
 	r->mtopei_readable = true;
@@ -304,6 +295,15 @@ static int examine_mtopi(struct target *target)
 	} else {
 		LOG_TARGET_INFO(target, "S?aia detected with IMSIC");
 	}
+
+	riscv_reg_t marchid;
+	if (riscv_reg_get(target, &marchid, GDB_REGNO_CSR0 + CSR_MARCHID) == ERROR_OK) {
+		if (marchid == 0x100) {
+			r->mtopi_readable = false;
+			r->mtopei_readable = false;
+		}
+	}
+
 	res = riscv_reg_impl_set_exist(target, GDB_REGNO_MTOPI, r->mtopi_readable);
 	if (res != ERROR_OK)
 		return res;
